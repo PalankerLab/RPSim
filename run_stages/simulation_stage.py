@@ -41,7 +41,8 @@ class SimulationStage(CommonRunStage):
 		"""
 		# initialize simulator
 		simulator = self.circuit.simulator(temperature=Configuration().params["temperature"],
-										   nominal_temperature=Configuration().params["nominal_temperature"])
+										   nominal_temperature=Configuration().params["nominal_temperature"],
+										   xyce_command = 'Xyce')
 		# run simulation
 		analysis = simulator.transient(step_time=(self.video_sequence['time_step']) @ U.u_ms,
 									   end_time=(Configuration().params["simulation_duration"]) @ U.u_s)
