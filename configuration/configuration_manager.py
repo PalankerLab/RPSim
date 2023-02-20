@@ -9,8 +9,8 @@ import datetime
 import numpy as np
 from pathlib import Path
 from deepdiff import DeepDiff
-from prettytable import PrettyTable
 from collections import defaultdict
+from prettytable import PrettyTable
 
 from configuration.models import Models
 from utilities.singleton import Singleton
@@ -221,7 +221,7 @@ class Configuration(metaclass=Singleton):
 																 self.params[
 																	 "video_sequence_name"] + "video_sequence.pkl")
 
-	def print_configuration(self, logger=None):
+	def get_configuration_table(self):
 		"""
 		This function outputs the configuration in a table form to a logger or a file
 		:param logger: logger object to use for the output stream
@@ -229,16 +229,18 @@ class Configuration(metaclass=Singleton):
 		"""
 		# generate output table
 		configuration_table = PrettyTable()
-		configuration_table.field_names = ['Attribute', 'Value']
 		for key, value in self.params.items():
 			configuration_table.add_row([key, value])
 
-		# print output table to logger or file
+		# format table
+		configuration_table.align = "l"
+		configuration_table.border = True
+		configuration_table.header = False
+		configuration_table.max_table_width = 168
+
+		# return output as string
 		configuration_output = "\n{}\n".format(configuration_table)
-		if logger:
-			logger.info(configuration_output)
-		else:
-			print(configuration_output)
+		return configuration_output
 
 	def store_configuration(self, output_directory):
 		"""

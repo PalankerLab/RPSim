@@ -4,6 +4,7 @@ This is the main module of the RPSim Software Tool
 
 import os
 import sys
+import time
 import logging
 
 from configuration.configuration_manager import Configuration
@@ -22,6 +23,9 @@ def run_rpsim(configuration=None, run_stages=None, find_similar_runs=True):
 	:return:
 	"""
 	try:
+
+		# start runtime clock
+		start_time = time.time()
 
 		# setup logging
 		RPSIM_LOGGER = CommonUtils.setup_logging(__file__)
@@ -43,15 +47,13 @@ def run_rpsim(configuration=None, run_stages=None, find_similar_runs=True):
 			CommonUtils.add_logger_file_handle(RPSIM_LOGGER, file_name=os.path.join(output_directory, 'execution.log'))
 
 			# report the start of a new run
-			RPSIM_LOGGER.info('\n{}\n'.format('=' * 150))
-			RPSIM_LOGGER.info("Starting a new run")
+			RPSIM_LOGGER.info('Staring a new run')
 
 			# start a new run manager
 			run_manager = RunStageManager(output_directory, run_stages)
 
 			# print current configuration to file
-			RPSIM_LOGGER.info("Running the following configuration:")
-			configuration_manager.print_configuration(logger=RPSIM_LOGGER)
+			RPSIM_LOGGER.info("Running the following configuration:{}".format(configuration_manager.get_configuration_table()))
 
 			# save configuration to file as dictionary for bookkeeping purposes
 			configuration_manager.store_configuration(output_directory=output_directory)
@@ -90,6 +92,9 @@ def run_rpsim(configuration=None, run_stages=None, find_similar_runs=True):
 		sys.exit(1)
 
 	finally:
+		# stop runtime clock
+		RPSIM_LOGGER.info("Execution time is {:.2f} minutes".format((time.time()-start_time)/60))
+
 		# terminate execution
 		RPSIM_LOGGER.info("Done")
 		logging.shutdown()

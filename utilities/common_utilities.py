@@ -26,7 +26,8 @@ class CommonUtils:
         console_handler.setLevel(logging.INFO)
 
         # create formatter and add it to handler
-        console_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        logging_format = '[%(asctime)s]-5 %(levelname)-10s %(funcName)-16s %(message)s'
+        console_format = logging.Formatter(logging_format, datefmt="%Y-%m-%d %H:%M:%S")
         console_handler.setFormatter(console_format)
 
         # Add handler to the logger
@@ -43,7 +44,8 @@ class CommonUtils:
         file_handler.setLevel(logging.INFO)
 
         # create formatter and add it to handler
-        file_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        logging_format = '[%(asctime)s] %(name)-10s %(levelname)-12s   %(message)s'
+        file_format = logging.Formatter(logging_format, datefmt="%Y-%m-%d %H:%M:%S")
         file_handler.setFormatter(file_format)
 
         # Add handler to the logger
