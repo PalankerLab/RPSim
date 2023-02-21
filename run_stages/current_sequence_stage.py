@@ -25,6 +25,11 @@ class CurrentSequenceStage(CommonRunStage):
 			'pixel_size': Configuration().params["pixel_size"]
 		}
 
+		# define paths
+		self.gif_output_file = os.path.join(self.output_directory,Configuration().params["video_sequence_name"], "video_sequence.gif")
+		self.sequence_script_input_file = os.path.join(Configuration().params["user_input_path"], "image_sequence",
+													   Configuration().params["video_sequence_name"], "seq_time.csv")
+
 		# initialize gif params
 		self.gif_image = []
 		self.gif_time = []
@@ -48,7 +53,7 @@ class CurrentSequenceStage(CommonRunStage):
 
 	@property
 	def output_file_name(self):
-		return [Configuration().params["video_sequence_output_file"]]
+		return [os.path.join(Configuration().params["video_sequence_name"],"video_sequence.pkl"), os.path.join(Configuration().params["video_sequence_name"], "video_sequence.gif")]
 
 	def run_stage(self):
 		"""
@@ -67,8 +72,8 @@ class CurrentSequenceStage(CommonRunStage):
 			assert abs(sum(row_dat) - self.video_sequence['T_frame'])<1e-6, "Frames must be of the same length!"
 			self.video_sequence['T_subframes'].append(row_dat)
 
-		self.video_sequence['Frames'] = [deepcopy(self.video_sequence['T_subframes']) for x in
-										 range(self.number_of_pixels)]
+		self.video_sequence['Frames'] = [deepcopy(self.video_sequence['T_subframes']) for _ in range(
+			self.number_of_pixels)]
 
 		for frame_idx in range(len(self.script)):
 			number_of_sub_frames = len(self.video_sequence['T_subframes'][frame_idx])
@@ -97,14 +102,14 @@ class CurrentSequenceStage(CommonRunStage):
 
 		self.gif_time = [x * 10 for x in self.gif_time]
 
-		return self.video_sequence
+		return [self.video_sequence, {"gif_data": self.gif_image, "gif_time": self.gif_time}]
 
 	def _parse_script_file(self):
 		"""
 		This function reads the sequence definition from the csv spec file, including time information and irradiance.
 		"""
 		# open csv file with video sequence description
-		with open(Configuration().params["sequence_script_input_file"], 'r') as f:
+		with open(self.sequence_script_input_file, 'r') as f:
 			csv_file = csv.reader(f)
 			for row in csv_file:
 				self.script.append(row)
@@ -121,6 +126,3 @@ class CurrentSequenceStage(CommonRunStage):
 		self.video_sequence['T_subframes'] = []
 		self.script = self.script[1:]
 
-	def generate_gif(self):
-		self.gif_image[0].save(Configuration().params["gif_output_file"], save_all=True,
-							   append_images=self.gif_image[1:], duration=self.gif_time, loop=0)

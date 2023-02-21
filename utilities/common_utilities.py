@@ -26,7 +26,7 @@ class CommonUtils:
         console_handler.setLevel(logging.INFO)
 
         # create formatter and add it to handler
-        logging_format = '[%(asctime)s]-5 %(levelname)-10s %(funcName)-16s %(message)s'
+        logging_format = '[%(asctime)-5s] %(levelname)-10s %(funcName)-16s %(message)s'
         console_format = logging.Formatter(logging_format, datefmt="%Y-%m-%d %H:%M:%S")
         console_handler.setFormatter(console_format)
 
@@ -44,7 +44,7 @@ class CommonUtils:
         file_handler.setLevel(logging.INFO)
 
         # create formatter and add it to handler
-        logging_format = '[%(asctime)s] %(name)-10s %(levelname)-12s   %(message)s'
+        logging_format = '[%(asctime)-5s] %(levelname)-10s %(funcName)-16s %(message)s'
         file_format = logging.Formatter(logging_format, datefmt="%Y-%m-%d %H:%M:%S")
         file_handler.setFormatter(file_format)
 
@@ -52,17 +52,16 @@ class CommonUtils:
         logger.addHandler(file_handler)
 
     @staticmethod
-    def generate_output_directory(parent_directory, directory_prefix):
+    def generate_output_directory(parent_directory):
         """
         This function creates a new output directory in the given parent directory and with the given prefix name
         :param parent_directory: the path of the parent directory in which the new folder should be created
-        :param directory_prefix: the prefix to use for directory name
         :return:
         """
         # generate unique directory name using date and time
         current_date_and_time = datetime.now()
-        output_directory = os.path.join(parent_directory, directory_prefix + "-" + current_date_and_time.strftime(
-            "%Y_%m_%d-%H_%M_%S").split('.')[0])
+        output_directory = os.path.join(parent_directory, current_date_and_time.strftime("%H_%M_%S-%Y_%m_%d").split(
+            '.')[0])
 
         # create directory and parents, if they do not exist
         Path(output_directory).mkdir(parents=True, exist_ok=True)
@@ -74,7 +73,7 @@ class CommonUtils:
         return output_directory
 
     @staticmethod
-    def store_output(output, output_directory, file_name, as_pickle=True, as_figure=False):
+    def store_output(output, output_directory, file_name):
         """
         This function stores the given output to the specified directory as a .pkl file or as a figure
         :param output: the output to be stored
@@ -90,14 +89,19 @@ class CommonUtils:
         # create directory and parents, if they do not exist
         Path(os.path.dirname(output_file_path)).mkdir(parents=True, exist_ok=True)
 
-        if as_pickle:
-            # store using pickle
+        # store as .pkl file
+        if ".pkl" in output_file_path:
             with open(output_file_path, 'wb') as handle:
                 pickle.dump(output, handle, protocol=pickle.HIGHEST_PROTOCOL)
-        elif as_figure:
+        # store as image file
+        elif ".png" in output_file_path or ".jpg" in output_file_path:
             output.savefig(output_file_path)
+
+        elif ".gif" in output_file_path:
+            output["gif_data"][0].save(output_file_path, format="GIF", save_all=True,append_images=output["gif_data"][1:], duration=output["gif_time"], loop=0)
+
         else:
-            # dump to regular file
+            # store as regular file
             with open(output_file_path, 'w') as f:
                 print(output, file=f)
 

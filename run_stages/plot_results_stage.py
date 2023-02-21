@@ -21,11 +21,7 @@ class PlotResultsStage(CommonRunStage):
 
 	@property
 	def output_file_name(self):
-		return ["figure_1.png", "figure_2.png"]
-
-	@property
-	def output_as_figure(self):
-		return True
+		return ["diode_voltage_vs_time.png", "current_vs_time.png"]
 
 	def run_stage(self):
 		"""
@@ -34,28 +30,29 @@ class PlotResultsStage(CommonRunStage):
 		:param kwargs:
 		:return:
 		"""
+		# initialize output
+		output_figures = list()
+
+		# plot diode voltage as a function of time for a center diode and an edge diode
 		fig1 = plt.figure()
-		plt.plot(self.simulation_results['time'] * 1E3, self.simulation_results['Pt99'] * 1E3, color='b', linewidth=1,
-				 label='Center')
-		plt.plot(self.simulation_results['time'] * 1E3, self.simulation_results['Pt1'] * 1E3, color='r', linewidth=1,
-				 label='Edge')
-		# plt.xlim(768, 800)
-		plt.legend(loc="lower right")
+		plt.plot(self.simulation_results['time'] * 1E3, self.simulation_results['Pt99'] * 1E3, color='b', linewidth=1,label='Center')
+		plt.plot(self.simulation_results['time'] * 1E3, self.simulation_results['Pt1'] * 1E3, color='r', linewidth=1,label='Edge')
+		plt.legend(loc="best")
 		plt.ylabel("Diode Voltage (mV)")
 		plt.xlabel("Time (ms)")
 		plt.grid()
+		output_figures.append(fig1)
 
+		# plot injected current [uA] as a function of time [ms] for a center electrode and an edge electrode
 		fig2 = plt.figure()
-		plt.plot(self.simulation_results['time'] * 1E3, self.simulation_results['VCProbe99'] * 1E6, color='b',
-				 linewidth=1, label='Center')
-		plt.plot(self.simulation_results['time'] * 1E3, self.simulation_results['VCProbe1'] * 1E6, color='r',
-				 linewidth=1, label='Edge')
-		# plt.xlim(950, 1120)
-		plt.legend(loc="upper right")
+		plt.plot(self.simulation_results['time'] * 1E3, self.simulation_results['VCProbe99'] * 1E6, color='b',linewidth=1, label='Center')
+		plt.plot(self.simulation_results['time'] * 1E3, self.simulation_results['VCProbe1'] * 1E6, color='r',linewidth=1, label='Edge')
+		plt.legend(loc="best")
 		plt.ylabel("Current ($\mu$A)")
 		plt.xlabel("Time (ms)")
 		plt.grid()
+		output_figures.append(fig2)
 
-		return fig1, fig2
+		return output_figures
 
 

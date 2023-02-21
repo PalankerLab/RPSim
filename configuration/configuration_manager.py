@@ -88,7 +88,7 @@ class Configuration(metaclass=Singleton):
 			self._add_common_calculated_values()
 
 			# set configuration file name
-			self.configuration_file_name = 'configuration_{}.pickle'.format(str(random.randint(0, 10000000)))
+			self.configuration_file_name = 'configuration_{}.pkl'.format(str(random.randint(0, 10000000)))
 
 			return True
 		return False
@@ -213,14 +213,6 @@ class Configuration(metaclass=Singleton):
 			self.params["photosensitive_area"] = np.sqrt(3) / 2 * self.params["photosensitive_area_edge_to_edge"] ** 2 \
 												- np.pi * self.params["active_electrode_radius"] ** 2
 
-		self.params["sequence_script_input_file"] = os.path.join(self.params["user_input_path"], "image_sequence",
-																 self.params["video_sequence_name"], "seq_time.csv")
-		self.params["gif_output_file"] = os.path.join(self.params["user_output_path"], "image_sequence",
-													  self.params["video_sequence_name"], "demo.gif")
-		self.params["video_sequence_output_file"] = os.path.join(self.params["user_output_path"], "image_sequence",
-																 self.params[
-																	 "video_sequence_name"] + "video_sequence.pkl")
-
 	def get_configuration_table(self):
 		"""
 		This function outputs the configuration in a table form to a logger or a file
@@ -238,9 +230,7 @@ class Configuration(metaclass=Singleton):
 		configuration_table.header = False
 		configuration_table.max_table_width = 168
 
-		# return output as string
-		configuration_output = "\n{}\n".format(configuration_table)
-		return configuration_output
+		return configuration_table
 
 	def store_configuration(self, output_directory):
 		"""
@@ -263,7 +253,7 @@ class Configuration(metaclass=Singleton):
 		configuration_pickles = list()
 		for root, _, filenames in os.walk(root_directory):
 			for filename in filenames:
-				if "configuration" in filename and ".pickle" in filename and not filename == self.configuration_file_name:
+				if "configuration" in filename and ".pkl" in filename and not filename == self.configuration_file_name:
 					configuration_pickles.append(os.path.join(root, filename))
 
 		# iterate and compare
@@ -292,13 +282,15 @@ class Configuration(metaclass=Singleton):
 		:return: 0 if they are identical, 1 if x is older than y, and -1 if vice versa
 		"""
 		# obtain datetime object for directory_x
-		directory_x_date = directory_x.split('-')[1].split('_')
-		directory_x_date.extend(directory_x.split('-')[2].split('_'))
+		file_name_x = os.path.basename(directory_x)
+		directory_x_date = file_name_x.split('-')[1].split('_')
+		directory_x_date.extend(file_name_x.split('-')[0].split('_'))
 		directory_x_datetime = datetime.datetime(*list(map(int, directory_x_date)))
 
 		# obtain datetime object for directory_y
-		directory_y_date = directory_y.split('-')[1].split('_')
-		directory_y_date.extend(directory_y.split('-')[2].split('_'))
+		file_name_y = os.path.basename(directory_y)
+		directory_y_date = file_name_y.split('-')[1].split('_')
+		directory_y_date.extend(file_name_y.split('-')[0].split('_'))
 		directory_y_datetime = datetime.datetime(*list(map(int, directory_y_date)))
 
 		if directory_x_datetime == directory_y_datetime:

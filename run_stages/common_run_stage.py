@@ -53,14 +53,6 @@ class CommonRunStage(ABC):
 	def stage_output(self):
 		return self._stage_output
 
-	@property
-	def output_as_pickle(self):
-		return True
-
-	@property
-	def output_as_figure(self):
-		return False
-
 	def run(self):
 		"""
 		This function defines the overall execution flow for any run stage
@@ -74,9 +66,7 @@ class CommonRunStage(ABC):
 			# save stage outputs to file
 			for number, output in enumerate(self._stage_output):
 				CommonUtils.store_output(output_directory=self.output_directory, output=output,
-										 file_name=self.output_file_name[number],
-										 as_pickle=self.output_as_pickle,
-										 as_figure=self.output_as_figure)
+										 file_name=self.output_file_name[number])
 			# document success
 			self.succeeded = True
 			return self._stage_output

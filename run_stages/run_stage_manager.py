@@ -34,19 +34,22 @@ class RunStageManager:
 		:param output_directory: the output directory for this run
 		:param run_stages: the run stages requested by the user
 		"""
-		self.run_stages = run_stages
 		self.output_directory = output_directory
 		self._all_stages = OrderedDict({
 			"resistive_mesh": {"constructor": ResistiveMeshStage, "output": list(), "output_file_name": [Configuration().params["r_matrix_output_file"]]},
-			"current_sequence": {"constructor": CurrentSequenceStage, "output": list(), "output_file_name": [Configuration().params["video_sequence_output_file"]]},
+			"current_sequence": {"constructor": CurrentSequenceStage, "output": list(), "output_file_name": [os.path.join(Configuration().params["video_sequence_name"],"video_sequence.pkl")]},
 			"circuit": {"constructor": CircuitStage, "output": list(), "output_file_name": [Configuration().params["netlist_output_file"]]},
 			"simulation": {"constructor": SimulationStage, "output": list(), "output_file_name": ["simulation_results.pkl"]},
-			"plot_results": {"constructor": PlotResultsStage, "output": list(), "output_file_name": ["figure_1.png", "figure_2.png"]}
+			"plot_results": {"constructor": PlotResultsStage, "output": list(), "output_file_name": ["diode_voltage_vs_time.png", "current_vs_time.png"]}
 		})
 
 		# if none are provided, run all stages
-		if not self.run_stages:
-			self.run_stages = self.get_all_stage_names()
+		self.run_stages = list()
+		run_stages = run_stages if run_stages else self.get_all_stage_names()
+		if isinstance(run_stages, str):
+			self.run_stages.append(run_stages)
+		else:
+			self.run_stages.extend(run_stages)
 
 	def get_all_stage_names(self):
 		"""
