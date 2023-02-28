@@ -125,7 +125,8 @@ class CircuitStage(CommonRunStage):
 							   "{:.3e}".format(self.resistive_mesh[px_idx - 1, cross_idx - 1]))
 				if isBipolar:
 					#interconnection among the return electrodes
-					self.circuit.R(f'r{cross_idx}_{px_idx}', f'rSaline{cross_idx}', f'rSaline{px_idx}', self.resistive_mesh[px_idx+self.number_of_pixels-1, cross_idx+self.number_of_pixels-1]@U.u_Ohm)
+					self.circuit.R(f'r{cross_idx}_{px_idx}', f'rSaline{cross_idx}', f'rSaline{px_idx}',  
+		    			"{:.3e}".format(self.resistive_mesh[px_idx+self.number_of_pixels-1, cross_idx+self.number_of_pixels-1]))
 		
 		return self.circuit
 
