@@ -76,7 +76,7 @@ def isEdge(px_pos, px_size, neighbors=6):
 
     return neighbor_num < neighbors
 
-def Rmat_simp(Rmat, ratio, imag_basis):
+def Rmat_simp(Rmat, ratio, imag_basis, Gs=0):
     N = Rmat.shape[0]
     G_comp = {}
 
@@ -98,7 +98,7 @@ def Rmat_simp(Rmat, ratio, imag_basis):
     w_idx = np.argsort(np.abs(w))[-1]
     
     E = E - w[w_idx] * np.outer(V[:, w_idx], V[:, w_idx])
-    v_basis = np.linalg.solve(G, imag_basis)
+    v_basis = np.linalg.solve(G + np.eye(N)*Gs, imag_basis)
     (v_basis_om, _) = np.linalg.qr(v_basis)
     i_basis = E.dot(v_basis_om)
     basis_idx = np.linalg.norm(i_basis, axis=0) > np.abs(w[w_idx])*1E-3
@@ -109,20 +109,3 @@ def Rmat_simp(Rmat, ratio, imag_basis):
     G_comp['i_basis'] = G_comp['i_basis'].reshape((-1, N)).T
 
     return Rmat_sparse, G_comp
-
-    
-
-
-    
-
-
-
-
-
-
-
-
-
-
-
-

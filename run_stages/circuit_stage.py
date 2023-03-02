@@ -36,7 +36,7 @@ class CircuitStage(CommonRunStage):
 			imag_basis = np.array(self.video_sequence["Frames"]).reshape((self.number_of_pixels, -1))
 			col_norm = np.linalg.norm(imag_basis, axis=0)
 			imag_basis = imag_basis[:, col_norm>1E-6]
-			(self.resistive_mesh, self.G_comp) = Rmat_simp(Rmat=self.resistive_mesh,
+			(self.resistive_mesh, self.G_comp) = Rmat_simp(Rmat=self.resistive_mesh, Gs=1/Configuration().params['shunt_resistance'],
 						  ratio=Configuration().params['r_matrix_simp_ratio'], imag_basis=imag_basis)
 			self.G_comp_flag = True
 
