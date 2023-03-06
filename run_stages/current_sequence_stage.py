@@ -4,10 +4,12 @@ import pickle
 from copy import deepcopy
 import matplotlib.pyplot as plt
 
-from utilities.image_processing_utilities import *
-
-from run_stages.common_run_stage import CommonRunStage
 from configuration.configuration_manager import Configuration
+
+from configuration.stages import RunStages
+from run_stages.common_run_stage import CommonRunStage
+
+from utilities.image_processing_utilities import *
 
 
 class CurrentSequenceStage(CommonRunStage):
@@ -21,14 +23,13 @@ class CurrentSequenceStage(CommonRunStage):
 
 		# initialize video sequence structure
 		self.video_sequence = {
-			"name": Configuration().params["video_sequence_name"],
+			"name": self.output_directory_name,
 			'pixel_size': Configuration().params["pixel_size"]
 		}
 
 		# define paths
-		self.gif_output_file = os.path.join(self.output_directory,Configuration().params["video_sequence_name"], "video_sequence.gif")
-		self.sequence_script_input_file = os.path.join(Configuration().params["user_input_path"], "image_sequence",
-													   Configuration().params["video_sequence_name"], "seq_time.csv")
+		self.image_sequence_input_folder = os.path.join(Configuration().params["user_input_path"], "image_sequence",self.output_directory_name)
+		self.sequence_script_input_file = os.path.join(self.image_sequence_input_folder, "seq_time.csv")
 
 		# initialize gif params
 		self.gif_image = []
@@ -44,16 +45,9 @@ class CurrentSequenceStage(CommonRunStage):
 		self.script = list()
 		self.max_photo_current_in_ua = None
 
-	def __str__(self):
-		return "Current Sequence Stage"
-
 	@property
 	def stage_name(self):
-		return "current_sequence"
-
-	@property
-	def output_file_name(self):
-		return [os.path.join(Configuration().params["video_sequence_name"],"video_sequence.pkl"), os.path.join(Configuration().params["video_sequence_name"], "video_sequence.gif")]
+		return RunStages.current_sequence.name
 
 	def run_stage(self):
 		"""
@@ -102,7 +96,7 @@ class CurrentSequenceStage(CommonRunStage):
 
 		self.gif_time = [x * 10 for x in self.gif_time]
 
-		return [self.video_sequence, {"gif_data": self.gif_image, "gif_time": self.gif_time}]
+		return [self.video_sequence, {"gif_data": self.gif_image, "gif_time": self.gif_time}, self.image_sequence_input_folder]
 
 	def _parse_script_file(self):
 		"""
@@ -114,12 +108,11 @@ class CurrentSequenceStage(CommonRunStage):
 			for row in csv_file:
 				self.script.append(row)
 
-		# assuming 1mW/mm^2
-		I0 = Configuration().params["photosensitive_area"] * Configuration().params["light_to_current_conversion_rate"] \
-			* 1E-3 / Configuration().params["number_of_diodes"]
 		# photocurrent per pixel at 1mW/mm^2
+		photocurrent = Configuration().params["photosensitive_area"] * Configuration().params["light_to_current_conversion_rate"] \
+			* 1E-3 / Configuration().params["number_of_diodes"]
 
-		self.max_photo_current_in_ua = float(self.script.pop(0)[1]) * I0  # uA  maximum photo-current
+		self.max_photo_current_in_ua = float(self.script.pop(0)[1]) * photocurrent  # uA  maximum photo-current
 		self.video_sequence['T_frame'] = float(self.script.pop(0)[1])
 		self.video_sequence['time_step'] = float(self.script.pop(0)[1])
 		self.video_sequence['L_images'] = []

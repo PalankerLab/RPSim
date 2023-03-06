@@ -2,9 +2,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import copy
 
-from run_stages.common_run_stage import CommonRunStage
-from configuration.configuration_manager import Configuration
 from configuration.models import Models
+from configuration.stages import RunStages
+from configuration.configuration_manager import Configuration
+
+from run_stages.common_run_stage import CommonRunStage
 from utilities.image_processing_utilities import int_sq
 
 
@@ -13,21 +15,9 @@ class ResistiveMeshStage(CommonRunStage):
 	This class implements the logic for the resistive mesh stage while abiding by the structure required by the
 	common run stage
 	"""
-
-	def __init__(self, *args):
-		super().__init__(*args)
-		self.resistive_mesh = None
-
-	def __str__(self):
-		return "Resistive Mesh Stage"
-
 	@property
 	def stage_name(self):
-		return "resistive_mesh"
-
-	@property
-	def output_file_name(self):
-		return [Configuration().params["r_matrix_output_file"]]
+		return RunStages.resistive_mesh.name
 
 	def run_stage(self):
 		"""
@@ -36,9 +26,7 @@ class ResistiveMeshStage(CommonRunStage):
 		:param kwargs:
 		:return:
 		"""
-		self.resistive_mesh = self._build_interconnected_mesh()
-		# self.plot_resistive_mesh()
-		return self.resistive_mesh
+		return self._build_interconnected_mesh()
 
 	@staticmethod
 	def _build_interconnected_mesh():
@@ -127,11 +115,13 @@ class ResistiveMeshStage(CommonRunStage):
 		np.fill_diagonal(S, G.sum(axis=1))
 		r_dual = 1 / S
 
-		return r_dual / Configuration().params["r_matrix_conductivity"] * 1E3
+		return [r_dual / Configuration().params["r_matrix_conductivity"] * 1E3]
 
-	def plot_resistive_mesh(self):
+	# TODO: incorporate in plot results
+	@staticmethod
+	def plot_resistive_mesh(resistive_mesh):
 		# Just for visualization of the resistors in the mesh. optional
-		plt.plot(np.diag(self.resistive_mesh * 1E-6), label='$R_{n,n}$')
+		plt.plot(np.diag(resistive_mesh * 1E-6), label='$R_{n,n}$')
 		plt.xlabel('Pixel Index')
 		plt.ylabel('Resistance (M$\Omega$)')
 		plt.legend()

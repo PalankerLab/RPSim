@@ -3,23 +3,22 @@ This is the main module of the RPSim Software Tool
 """
 
 import os
-import sys
 import time
 import logging
 
 from configuration.configuration_manager import Configuration
-from run_stages.run_stage_manager import RunStageManager
+from run_manager import RunManager
 from utilities.common_utilities import CommonUtils
+from utilities.exceptions import NeededOutputNotFound
 
 global RPSIM_LOGGER
 
 
-def run_rpsim(configuration=None, run_stages=None, find_similar_runs=True):
+def run_rpsim(configuration=None, run_stages=None, skip_stages=None):
 	"""
 	This is the main function of the tool which handles its overall initialization and flow
 	:param configuration: a dictionary with the user's configuration parameters
-	:param requested_run_stages: the run stages that the user would like to execute
-	:param find_similar_runs: whether the tool should check for similar runs (currently based on configuration params)
+	:param run_stages: the run stages that the user would like to execute
 	:return:
 	"""
 	try:
@@ -33,7 +32,6 @@ def run_rpsim(configuration=None, run_stages=None, find_similar_runs=True):
 		# parse configuration, the configuration manager and parsing is done once at the beginning of the run
 		configuration_manager = Configuration(configuration)
 
-		# iterate all provided configurations and execute
 		while next(configuration_manager):
 
 			# remove any previous logger file handles
@@ -47,35 +45,33 @@ def run_rpsim(configuration=None, run_stages=None, find_similar_runs=True):
 
 			# report the start of a new run
 			RPSIM_LOGGER.info('Staring a new run')
-
-			# if all stages requested, no need to check for previous runs
-			find_similar_runs = find_similar_runs if run_stages else False
+			RPSIM_LOGGER.info("Output directory: {}".format(output_directory))
 
 			# start a new run manager
-			run_manager = RunStageManager(output_directory, run_stages)
-			run_stages = run_manager.get_run_stages()
+			run_manager = RunManager(output_directory, run_stages, skip_stages)
 
-			# print run stages
+			# update the run stages that will be executed, and report
+			run_stages = run_manager.get_requested_run_stages()
 			RPSIM_LOGGER.info("Requested run stages: {}".format(list(run_stages)))
 
 			# print current configuration to file
-			RPSIM_LOGGER.info("Running the following configuration\n{}\n".format(configuration_manager.get_configuration_table()))
+			RPSIM_LOGGER.info("Running the following configuration\n{}\n".format(configuration_manager.get_configuration_as_table()))
 
 			# save configuration to file as dictionary for bookkeeping purposes
 			configuration_manager.store_configuration(output_directory=output_directory)
 
 			# Check if the same configuration was already executed in this location;
-			if find_similar_runs:
-				RPSIM_LOGGER.info("Checking for similar runs...")
-				identical_configurations = configuration_manager.find_identical_configurations(os.path.dirname(output_directory))
-				if identical_configurations:
-					RPSIM_LOGGER.warning("The same configuration was executed in the following runs:\n" + "\n".join(identical_configurations))
-					RPSIM_LOGGER.warning("The latest execution is: {}".format(identical_configurations[0]))
-				else:
-					RPSIM_LOGGER.info("No similar runs were detected")
+			if run_manager.find_previous_runs:
 
-				# initialize skipped run stages, if necessary
+				RPSIM_LOGGER.info("Not all stages selected for execution, searching for previous runs with the same configuration...")
+				identical_configurations = configuration_manager.find_identical_configurations(os.path.dirname(output_directory))
+
+				# check if we have previous runs to rely on, if not we have a problem
+				if not identical_configurations:
+					raise NeededOutputNotFound("Current run relies on previous executions, but no such executions were found. Please run full flow.")
+
 				run_manager.initialize_missing_outputs(identical_configurations)
+				RPSIM_LOGGER.info("Missing outputs were initialized successfully")
 
 			# execute all requested run stages
 			for stage in run_stages:
@@ -84,9 +80,7 @@ def run_rpsim(configuration=None, run_stages=None, find_similar_runs=True):
 				# print initialization message
 				RPSIM_LOGGER.info("Running {}".format(run_stage.__str__()))
 				# run stage
-				stage_output = run_stage.run()
-				# save stage output to run manager
-				run_manager.update_stages_output(stage, stage_output)
+				run_stage.run()
 
 		RPSIM_LOGGER.info("Finished running all provided configurations")
 

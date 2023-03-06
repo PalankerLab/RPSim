@@ -3,6 +3,7 @@ import pickle
 import logging
 from pathlib import Path
 from datetime import datetime
+from distutils.dir_util import copy_tree
 
 
 class CommonUtils:
@@ -79,30 +80,38 @@ class CommonUtils:
         :param output: the output to be stored
         :param output_directory: the directory in which to store the output
         :param file_name: the name of the file with the output data
-        :param as_pickle: store output in .pkl format
-        :param as_figure: store output as figure
         :return:
         """
+        # if the output is a directory, just copy to output folder
+        if isinstance(output, str) and os.path.isdir(output):
+            copy_tree(output, output_directory)
+            return
+
         # define file name
-        output_file_path = os.path.join(output_directory, file_name)
+        output_path = os.path.join(output_directory, file_name)
 
         # create directory and parents, if they do not exist
-        Path(os.path.dirname(output_file_path)).mkdir(parents=True, exist_ok=True)
+        Path(os.path.dirname(output_path)).mkdir(parents=True, exist_ok=True)
+
+        # if output path is a directory and not a file, just copy to output folder
+        if os.path.isdir(output_path):
+            copy_tree(output_path, output_directory)
+            return
 
         # store as .pkl file
-        if ".pkl" in output_file_path:
-            with open(output_file_path, 'wb') as handle:
+        if ".pkl" in output_path:
+            with open(output_path, 'wb') as handle:
                 pickle.dump(output, handle, protocol=pickle.HIGHEST_PROTOCOL)
         # store as image file
-        elif ".png" in output_file_path or ".jpg" in output_file_path:
-            output.savefig(output_file_path)
+        elif ".png" in output_path or ".jpg" in output_path:
+            output.savefig(output_path)
 
-        elif ".gif" in output_file_path:
-            output["gif_data"][0].save(output_file_path, format="GIF", save_all=True,append_images=output["gif_data"][1:], duration=output["gif_time"], loop=0)
+        elif ".gif" in output_path:
+            output["gif_data"][0].save(output_path, format="GIF", save_all=True,append_images=output["gif_data"][1:], duration=output["gif_time"], loop=0)
 
         else:
             # store as regular file
-            with open(output_file_path, 'w') as f:
+            with open(output_path, 'w') as f:
                 print(output, file=f)
 
     @staticmethod
@@ -116,3 +125,10 @@ class CommonUtils:
         with open(file_name, 'rb') as file:
             if suffix == 'pkl' or not suffix:
                 return pickle.load(file)
+
+    @staticmethod
+    def strip_idx(string):
+        """
+		This function removes the numerical suffix of a variable name to help classify.
+		"""
+        return string.rstrip(''.join(str(kk) for kk in range(10)))

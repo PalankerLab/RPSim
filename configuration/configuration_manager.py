@@ -2,10 +2,12 @@
 This module handles everything related to the initialization, parsing, and analysis of the tool's configuration
 """
 
-import functools
 import os
+import pickle
 import random
 import datetime
+import functools
+import re as regex
 import numpy as np
 from pathlib import Path
 from deepdiff import DeepDiff
@@ -13,6 +15,7 @@ from collections import defaultdict
 from prettytable import PrettyTable
 
 from configuration.models import Models
+from configuration.stages import StageManager, RunStages
 from utilities.singleton import Singleton
 
 
@@ -43,11 +46,18 @@ class Configuration(metaclass=Singleton):
 		self.configurations = list()
 		self.identical_configurations = list()
 
+		# initialize variables for comparing configuration
+		self.skip_params = dict()
+		self.compare_params = dict()
+
+		# compile regex
+		self.time_date_pattern = regex.compile("(\d{2}_\d{2}_\d{2})-(\d{4}_\d{2}_\d{2})")
+
 		# parse configuration
 		self._parse_configuration_file(configuration)
 
-		# filter by geometry
-		self._filter_by_model()
+		# filter by different keys
+		self._filter_by_key()
 
 		# if some parameters have several values, expand to all possible configuration
 		self._expand_permutations()
@@ -90,20 +100,34 @@ class Configuration(metaclass=Singleton):
 			# set configuration file name
 			self.configuration_file_name = 'configuration_{}.pkl'.format(str(random.randint(0, 10000000)))
 
+			# create a reduced dictionary with params needed for comparing runs
+			for key,value in self.params.items():
+				if not key in self.skip_params:
+					self.compare_params[key] = value
+
 			return True
 		return False
 
-	def _filter_by_model(self):
+	def _filter_by_key(self):
 		"""
 		This function enables to filter the configuration parameters
 		Currently the filtering only includes the model
 		:return:
 		"""
 		for key in list(self.initial_params.keys()):
+			# filter by implant model
 			if key in [Models.BIPOLAR.value, Models.MONOPOLAR.value]:
 				if key == self.initial_params["model"]:
 					for name, value in self.initial_params[key].items():
 						self.initial_params[name] = value
+				del self.initial_params[key]
+
+			# filter by stage
+			if key in StageManager.get_all_available_run_stages():
+				if key == RunStages.post_process.name:
+					for name, value in self.initial_params[key].items():
+						self.initial_params[name] = value
+						self.skip_params[name] = value
 				del self.initial_params[key]
 
 	def _parse_configuration_file(self, configuration=None):
@@ -213,7 +237,7 @@ class Configuration(metaclass=Singleton):
 			self.params["photosensitive_area"] = np.sqrt(3) / 2 * self.params["photosensitive_area_edge_to_edge"] ** 2 \
 												- np.pi * self.params["active_electrode_radius"] ** 2
 
-	def get_configuration_table(self):
+	def get_configuration_as_table(self):
 		"""
 		This function outputs the configuration in a table form to a logger or a file
 		:param logger: logger object to use for the output stream
@@ -238,7 +262,6 @@ class Configuration(metaclass=Singleton):
 		:param output_directory: the directory in which to store the file
 		:return:
 		"""
-		import pickle
 		with open(os.path.join(output_directory, self.configuration_file_name), 'wb') as handle:
 			pickle.dump(self.params, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -263,38 +286,38 @@ class Configuration(metaclass=Singleton):
 			with open(configuration_pickle, 'rb') as handle:
 				stored_configuration = pickle.load(handle)
 
+			# remove values that should not be compared from restored configuration
+			clean_stored_configuration = dict()
+			for key,value in stored_configuration.items():
+				if not key in self.skip_params:
+					clean_stored_configuration[key] = value
+
 			# compare restored configuration to current, and append if identical
-			if not DeepDiff(stored_configuration, self.params):
+			if not DeepDiff(clean_stored_configuration, self.compare_params):
 				self.identical_configurations.append(os.path.dirname(configuration_pickle))
 
 		# sort by date and time
-		self.identical_configurations = sorted(self.identical_configurations, key=functools.cmp_to_key(
-			self.datetime_compare), reverse=True)
+		self.identical_configurations = sorted(self.identical_configurations, key=functools.cmp_to_key(self.datetime_compare), reverse=True)
 
 		return self.identical_configurations
 
-	@staticmethod
-	def datetime_compare(directory_x, directory_y):
+	def datetime_compare(self, directory_x, directory_y):
 		"""
 		This functon compares between two directories based on their date and time
 		:param directory_x: name of first input directory
 		:param directory_y: name of second input directory
 		:return: 0 if they are identical, 1 if x is older than y, and -1 if vice versa
 		"""
-		# obtain datetime object for directory_x
-		file_name_x = os.path.basename(directory_x)
-		directory_x_date = file_name_x.split('-')[1].split('_')
-		directory_x_date.extend(file_name_x.split('-')[0].split('_'))
-		directory_x_datetime = datetime.datetime(*list(map(int, directory_x_date)))
+		directories = dict.fromkeys([directory_x, directory_y])
 
-		# obtain datetime object for directory_y
-		file_name_y = os.path.basename(directory_y)
-		directory_y_date = file_name_y.split('-')[1].split('_')
-		directory_y_date.extend(file_name_y.split('-')[0].split('_'))
-		directory_y_datetime = datetime.datetime(*list(map(int, directory_y_date)))
-
-		if directory_x_datetime == directory_y_datetime:
+		# obtain time stamp for each path
+		for directory in directories.keys():
+			time_date_match = self.time_date_pattern.search(os.path.basename(directory))
+			directories[directory] = datetime.datetime(*list(map(int, time_date_match.group(2).split("_") +
+														 time_date_match.group(1).split("_"))))
+		# compare time stamps
+		if directories[directory_x] == directories[directory_y]:
 			return 0
-		if directory_x_datetime > directory_y_datetime:
+		if directories[directory_x] > directories[directory_y]:
 			return 1
 		return -1

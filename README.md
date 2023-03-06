@@ -240,7 +240,8 @@ execution section in the notebook:
 
    ```python
     from RPSim import run_rpsim
-    run_rpsim(configuration=configuration, find_similar_runs=True)
+
+run_rpsim(configuration=configuration, find_previous_runs=True)
    ```
 
 #### 1. Options
@@ -250,7 +251,8 @@ In order to run only the plot_results stage change this variable as follows:
 
    ```python
     from RPSim import run_rpsim
-    run_rpsim(configuration=configuration, run_stages=["plot_results"], find_similar_runs=True)
+
+run_rpsim(configuration=configuration, run_stages=["plot_results"], find_previous_runs=True)
    ```
 
 As the above flow is initialized midway, the tool will search for the latest available output for the previous 

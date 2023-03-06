@@ -1,12 +1,13 @@
+import numpy as np
+
 import PySpice
 import PySpice.Unit as U
 from PySpice.Spice.Netlist import Circuit
-import numpy as np
-
 PySpice.Spice.Simulation.CircuitSimulator.DEFAULT_SIMULATOR = 'xyce-serial'
 
-from configuration.configuration_manager import Configuration
 from configuration.models import Models
+from configuration.stages import RunStages
+from configuration.configuration_manager import Configuration
 
 from run_stages.common_run_stage import CommonRunStage
 
@@ -15,7 +16,7 @@ from circuit_building_blocks.electrode import SIROF
 from circuit_building_blocks.frame_driver import FramesDriver
 from circuit_building_blocks.image_driver import ImageDriver
 
-from utilities.image_processing_utilities import isEdge
+from utilities.image_processing_utilities import is_edge
 
 
 class CircuitStage(CommonRunStage):
@@ -26,30 +27,19 @@ class CircuitStage(CommonRunStage):
 	def __init__(self, *args):
 		super().__init__(*args)
 		self.circuit = None
-		self.video_sequence = self.get_stage_output_func("current_sequence", 0)
-		self.resistive_mesh = self.get_stage_output_func("resistive_mesh", 0)
+		self.video_sequence = self.outputs_container[RunStages.current_sequence.name][0]
+		self.resistive_mesh = self.outputs_container[RunStages.resistive_mesh.name][0]
 		self.number_of_pixels = len(self.video_sequence['Frames'])
 		self.simulation_results = None
 
 		if Configuration().params.get("r_matrix_input_file_px_pos"):
 			px_pos = np.loadtxt(Configuration().params["r_matrix_input_file_px_pos"], delimiter=',')
-			self.is_edge = isEdge(px_pos, Configuration().params["pixel_size"])
+			self.is_edge = is_edge(px_pos, Configuration().params["pixel_size"])
 			self.edge_factor = Configuration().params["additional_edges"] / np.sum(self.is_edge) / 6
-
-	def __str__(self):
-		return "Circuit Generation Stage"
 
 	@property
 	def stage_name(self):
-		return "circuit"
-
-	@property
-	def output_file_name(self):
-		return [Configuration().params["netlist_output_file"]]
-
-	@property
-	def output_as_pickle(self):
-		return False
+		return RunStages.circuit.name
 
 	def run_stage(self, *args, **kwargs):
 		"""
@@ -58,7 +48,7 @@ class CircuitStage(CommonRunStage):
 		:param kwargs:
 		:return:
 		"""
-		isBipolar = Configuration().params["model"] == Models.BIPOLAR.value
+		is_bipolar = Configuration().params["model"] == Models.BIPOLAR.value
 		self.circuit = Circuit('My_Circuit')
 
 		# --------Image sequence controller----------
@@ -93,9 +83,9 @@ class CircuitStage(CommonRunStage):
 									  c0=Configuration().params["sirof_active_capacitance_nF"]))
 		self.circuit.subcircuit(SIROF('return',
 			Vini=-Configuration().params["initial_Vactive"] / Configuration().params["return_to_active_area_ratio"],
-			scaling= Configuration().params["return_to_active_area_ratio"] * (1 if isBipolar else self.number_of_pixels),
+			scaling= Configuration().params["return_to_active_area_ratio"] * (1 if is_bipolar else self.number_of_pixels),
 			c0=Configuration().params["sirof_active_capacitance_nF"]))
-		if isBipolar:
+		if is_bipolar:
 			edge_ar = Configuration().params["return_to_active_area_ratio"] * (1 + self.edge_factor)
 			self.circuit.subcircuit(SIROF('return_edge',	Vini=-Configuration().params["initial_Vactive"] / edge_ar,
 				scaling=edge_ar, c0=Configuration().params["sirof_active_capacitance_nF"]))
@@ -109,7 +99,7 @@ class CircuitStage(CommonRunStage):
 			self.circuit.X(f'Active{px_idx}', 'active', f'Pt{px_idx}', f'Saline{px_idx}')
 			self.circuit.R(f'{px_idx}_{px_idx}', f'Saline{px_idx}', f'Saline{0}',self.resistive_mesh[px_idx - 1, px_idx - 1] @ U.u_Ohm)
 			
-			if isBipolar:
+			if is_bipolar:
 				#configure return electrodes and their connections to the GND
 				self.circuit.V(f'rCProbe{px_idx}', self.circuit.gnd, f'rPt{px_idx}', 0@U.u_V)
 				self.circuit.X(f'Return{px_idx}', 'return' + ("_edge" if self.is_edge[px_idx-1] else ""), f'rSaline{px_idx}', f'rPt{px_idx}')
@@ -125,7 +115,7 @@ class CircuitStage(CommonRunStage):
 				#interconnection among the active electrodes
 				self.circuit.R(f'{cross_idx}_{px_idx}', f'Saline{cross_idx}', f'Saline{px_idx}',
 							   self.resistive_mesh[px_idx - 1, cross_idx - 1] @ U.u_Ohm)
-				if isBipolar:
+				if is_bipolar:
 					#interconnection among the return electrodes
 					self.circuit.R(f'r{cross_idx}_{px_idx}', f'rSaline{cross_idx}', f'rSaline{px_idx}', self.resistive_mesh[px_idx+self.number_of_pixels-1, cross_idx+self.number_of_pixels-1]@U.u_Ohm)
 		

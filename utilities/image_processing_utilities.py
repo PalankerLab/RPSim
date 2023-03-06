@@ -61,7 +61,7 @@ def img2pixel(img_in, label):
     return np.round(light_on_pixels/255, decimals=6).tolist()
 
 
-def isEdge(px_pos, px_size, neighbors=6):
+def is_edge(px_pos, px_size, neighbors=6):
     """
     This function determines if a bipolar pixel is at the edge of an array and hence the return area is different
     """
