@@ -9,6 +9,7 @@ import datetime
 import functools
 import re as regex
 import numpy as np
+import pickle
 from pathlib import Path
 from deepdiff import DeepDiff
 from collections import defaultdict
@@ -225,6 +226,10 @@ class Configuration(metaclass=Singleton):
 		other parameters
 		:return:
 		"""
+		with open(self.params["pixel_label_input_file"], 'rb') as f:
+			image_label = pickle.load(f)
+		self.params["number_of_pixels"] = image_label.max()
+
 		self.params["sirof_active_capacitance_nF"] = self.params["sirof_capacitance"] * np.pi * self.params[
 			"active_electrode_radius"] ** 2 * 1E-2
 		self.params["return_width"] = (self.params["pixel_size"] - self.params["photosensitive_area_edge_to_edge"]) / 2
@@ -236,6 +241,28 @@ class Configuration(metaclass=Singleton):
 		if self.params["photosensitive_area"] is None:
 			self.params["photosensitive_area"] = np.sqrt(3) / 2 * self.params["photosensitive_area_edge_to_edge"] ** 2 \
 												- np.pi * self.params["active_electrode_radius"] ** 2
+		
+
+		if "initial_Vactive" not in self.params:
+			self.params["initial_Vactive"] = 0
+		if (type(self.params["initial_Vactive"]) is tuple) and (self.params["model"]== Models.BIPOLAR.value):
+			raise Exception("Bipolar mode does not support importing state.")
+
+		if (type(self.params["initial_Vactive"]) is tuple):
+			
+			full_path = os.path.join(self.params["user_output_path"], self.params["initial_Vactive"][0], 'simulation_results.pkl')
+			with open(full_path, 'rb') as f:
+				sim_res_dict = pickle.load(f)
+
+			t = sim_res_dict['time']*1E3 - self.params["initial_Vactive"][1]
+			self.params['Vini_act'] = np.array([ np.interp(0, t, sim_res_dict[f'Pt{x+1}'] - sim_res_dict[f'Saline{x+1}'])
+		       for x in range(self.params["number_of_pixels"])])    #V
+			self.params['Vini_ret'] = np.interp(0, t, sim_res_dict[f'Pt{0}'] - sim_res_dict[f'Saline{0}'])    #V
+
+		else:
+			self.params['Vini_act'] = self.params["initial_Vactive"] * np.ones(self.params["number_of_pixels"])
+			self.params['Vini_ret'] = -self.params["initial_Vactive"] / self.params["return_to_active_area_ratio"]
+
 
 	def get_configuration_as_table(self):
 		"""
