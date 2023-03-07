@@ -230,13 +230,11 @@ class Configuration(metaclass=Singleton):
 			image_label = pickle.load(f)
 		self.params["number_of_pixels"] = image_label.max()
 
-		self.params["sirof_active_capacitance_nF"] = self.params["sirof_capacitance"] * np.pi * self.params[
-			"active_electrode_radius"] ** 2 * 1E-2
+		self.params["sirof_active_capacitance_nF"] = self.params["sirof_capacitance"] * np.pi * self.params["active_electrode_radius"] ** 2 * 1E-2
 		self.params["return_width"] = (self.params["pixel_size"] - self.params["photosensitive_area_edge_to_edge"]) / 2
 		self.params["return_width"] = (self.params["pixel_size"] - self.params["photosensitive_area_edge_to_edge"]) / 2
 		if self.params["model"] == Models.BIPOLAR.value:
-			self.params["return_to_active_area_ratio"] = np.sqrt(3) / 2 * (
-						self.params["pixel_size"] ** 2 - self.params["photosensitive_area_edge_to_edge"] ** 2) / \
+			self.params["return_to_active_area_ratio"] = np.sqrt(3) / 2 * (self.params["pixel_size"] ** 2 - self.params["photosensitive_area_edge_to_edge"] ** 2) / \
 														(np.pi * self.params["active_electrode_radius"] ** 2)
 		if self.params["photosensitive_area"] is None:
 			self.params["photosensitive_area"] = np.sqrt(3) / 2 * self.params["photosensitive_area_edge_to_edge"] ** 2 \

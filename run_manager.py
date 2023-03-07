@@ -41,6 +41,7 @@ class RunManager:
 
 		# if none are provided, run all stages
 		self.run_stages = list()
+		skip_stages = skip_stages if skip_stages else list()
 		run_stages = run_stages if run_stages else [stage for stage in StageManager.get_all_available_run_stages() if
 													stage not in skip_stages]
 		if isinstance(run_stages, str):

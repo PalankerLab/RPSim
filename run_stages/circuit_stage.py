@@ -33,7 +33,7 @@ class CircuitStage(CommonRunStage):
 		self.simulation_results = None
 
 		self.G_comp_flag = False
-		if (Configuration().params['r_matrix_simp_ratio'] < 1) and (Configuration().params["model"]== Models.MONOPOLAR.value):
+		if Configuration().params["model"]== Models.MONOPOLAR.value and Configuration().params['r_matrix_simp_ratio'] < 1:
 			imag_basis = np.array(self.video_sequence["Frames"]).reshape((self.number_of_pixels, -1))
 			col_norm = np.linalg.norm(imag_basis, axis=0)
 			imag_basis = imag_basis[:, col_norm>1E-6]
@@ -42,8 +42,7 @@ class CircuitStage(CommonRunStage):
 			self.G_comp_flag = True
 
 		if Configuration().params.get("r_matrix_input_file_px_pos"):
-			px_pos = np.loadtxt(Configuration().params["r_matrix_input_file_px_pos"], delimiter=',')
-			self.is_edge = is_edge(px_pos, Configuration().params["pixel_size"])
+			self.is_edge = is_edge(np.loadtxt(Configuration().params["r_matrix_input_file_px_pos"], delimiter=','), Configuration().params["pixel_size"])
 			self.edge_factor = Configuration().params["additional_edges"] / np.sum(self.is_edge) / 6
 
 	@property
