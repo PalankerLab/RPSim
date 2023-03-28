@@ -16,7 +16,8 @@ from circuit_building_blocks.electrode import SIROF
 from circuit_building_blocks.frame_driver import FramesDriver
 from circuit_building_blocks.image_driver import ImageDriver
 
-from utilities.image_processing_utilities import is_edge, Rmat_simp
+from utilities.image_processing_utilities import is_edge
+from utilities.matrix_utilities import Rmat_simp
 
 
 class CircuitStage(CommonRunStage):
