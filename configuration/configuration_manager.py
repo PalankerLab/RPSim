@@ -270,7 +270,10 @@ class Configuration(metaclass=Singleton):
 		"""
 		# generate output table
 		configuration_table = PrettyTable()
+		skip_items = ['Vini_act', 'Vini_ret'] #skip some calculated values for readability
 		for key, value in self.params.items():
+			if key in skip_items:
+				continue
 			configuration_table.add_row([key, value])
 
 		# format table
