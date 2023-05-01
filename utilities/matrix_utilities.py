@@ -70,6 +70,8 @@ class Point:
             v = getattr(t, f'v{kk+1}')
             if nla.norm(v - self.p) < t.scale * 1E-6:
                 return kk+1 # at one of the vertices
+        for kk in range(3):
+            v = getattr(t, f'v{kk+1}')
             n = getattr(t, f'n{kk+1}')
             if (self.p - v)@n < 0:
                 return False
@@ -162,8 +164,7 @@ class Triangle:
             e2 = getattr(self, f'e{topo-1 if topo>1 else 3}')
             theta = np.arccos((e1@e2)/(nla.norm(e1)*nla.norm(e2)))
             R_eq = np.sqrt(self.dS/theta)
-            r_c[idx] = 1/(12*R_eq*theta)
-
+            r_v[idx] = 1/(12*R_eq*theta)
         else:
             idx = np.argmin(nla.norm(self.mesh_c - target.p, axis=1))
             pt = self.mesh_c[idx, :]
