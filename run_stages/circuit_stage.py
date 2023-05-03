@@ -52,13 +52,15 @@ class CircuitStage(CommonRunStage):
 			I_tot = np.sum(imag_basis, axis=0)
 			I_tot = np.reshape(I_tot, (1, -1))
 			imag_basis = np.concatenate((imag_basis, -I_tot), axis=0)
+			zero_idx = np.linalg.norm(imag_basis, axis=0) == 0
+			imag_basis = imag_basis[:, ~zero_idx]
 
 			Gs = 1/Configuration().params['shunt_resistance']
 			Gp += np.eye(N_act+1)*Gs
 			Gp[N_act, N_act] += np.eye(N_act+1)*Gs
 			Gp[:N_act, N_act] -= Gs
 			Gp[N_act, :N_act] -= Gs
-			
+
 			v_basis = np.linalg.solve(Gp, imag_basis)
 			ep_pad = np.outer( np.ones(N_ret-1), v_basis[-1, :] )
 			v_basis = np.concatenate((v_basis, ep_pad ), axis=0)
