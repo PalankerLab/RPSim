@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import copy
+import os
 
 from configuration.models import Models
 from configuration.stages import RunStages
@@ -26,6 +27,10 @@ class ResistiveMeshStage(CommonRunStage):
 		:param kwargs:
 		:return:
 		"""
+		if Configuration().params["model"] == Models.MONO_DR.value :
+			filename = os.path.join(Configuration().params["user_input_path"], Configuration().params["r_matrix_input_file"])
+			return filename
+
 		return self._build_interconnected_mesh()
 
 	@staticmethod

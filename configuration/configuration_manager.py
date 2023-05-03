@@ -117,7 +117,7 @@ class Configuration(metaclass=Singleton):
 		"""
 		for key in list(self.initial_params.keys()):
 			# filter by implant model
-			if key in [Models.BIPOLAR.value, Models.MONOPOLAR.value]:
+			if key in [Models.BIPOLAR.value, Models.MONOPOLAR.value, Models.MONO_DR.value]:
 				if key == self.initial_params["model"]:
 					for name, value in self.initial_params[key].items():
 						self.initial_params[name] = value

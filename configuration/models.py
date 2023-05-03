@@ -8,3 +8,4 @@ class Models(Enum):
 
 	MONOPOLAR = "monopolar"
 	BIPOLAR = "bipolar"
+	MONO_DR = "monopolar_DR"

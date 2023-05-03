@@ -18,6 +18,7 @@ from circuit_building_blocks.image_driver import ImageDriver
 
 from utilities.image_processing_utilities import is_edge
 from utilities.matrix_utilities import Rmat_simp
+import pickle as pkl
 
 
 class CircuitStage(CommonRunStage):
@@ -34,6 +35,48 @@ class CircuitStage(CommonRunStage):
 		self.simulation_results = None
 
 		self.G_comp_flag = False
+
+		if Configuration().params["model"]== Models.MONO_DR.value:
+			with open(self.resistive_mesh, 'rb') as f:
+				dat = pkl.load(f)
+			
+			N_act = dat['N_act']
+			N_ret = dat['N_ret']
+			Gp = np.zeros((N_act+1, N_act+1))
+			Gp[:N_act, :N_act] = dat['G'][:N_act, :N_act]
+			Gp[:N_act, N_act] = np.sum(Gp[:N_act, N_act:], axis=1)
+			Gp[N_act, :N_act] = Gp[:N_act, N_act]
+			Gp[N_act, N_act] = np.sum(Gp[N_act:, N_act:])
+			
+			imag_basis = np.array(self.video_sequence["Frames"]).reshape((self.number_of_pixels, -1))
+			I_tot = np.sum(imag_basis, axis=0)
+			I_tot = np.reshape(I_tot, (1, -1))
+			imag_basis = np.concatenate((imag_basis, -I_tot), axis=0)
+
+			Gs = 1/Configuration().params['shunt_resistance']
+			Gp += np.eye(N_act+1)*Gs
+			Gp[N_act, N_act] -= Gs
+			v_basis = np.linalg.solve(Gp, imag_basis)
+			ep_pad = np.outer( np.ones(N_ret-1), v_basis[-1, :] )
+			v_basis = np.concatenate((v_basis, ep_pad ), axis=0)
+			(v_basis_om, _) = np.linalg.qr(v_basis)
+			i_basis = (dat['G'] - dat['G_cmp']) @ v_basis_om
+
+			self.G_comp = {}
+			self.G_comp['v_basis'] = np.concatenate((dat['u'] , v_basis_om), axis=1)
+			self.G_comp['i_basis'] = np.concatenate((dat['u']*dat['w'] , i_basis), axis=1)
+
+			Smat = np.diagflat(np.sum(dat['S'], axis=0)) - np.tril(dat['S'], -1) - np.triu(dat['S'], 1)
+			Smat[Smat==0] = np.nan
+			self.resistive_mesh = 1/Smat
+
+			self.number_of_returns = dat['N_ret']
+			self.ret_tri_area = dat['tri_area']
+		
+			self.G_comp_flag = True
+			
+
+
 		if Configuration().params["model"]== Models.MONOPOLAR.value and Configuration().params['r_matrix_simp_ratio'] < 1:
 			imag_basis = np.array(self.video_sequence["Frames"]).reshape((self.number_of_pixels, -1))
 			col_norm = np.linalg.norm(imag_basis, axis=0)
@@ -58,6 +101,7 @@ class CircuitStage(CommonRunStage):
 		:return:
 		"""
 		is_bipolar = Configuration().params["model"] == Models.BIPOLAR.value
+		is_mono_dr = Configuration().params["model"] == Models.MONO_DR.value
 		self.circuit = Circuit('My_Circuit')
 
 		# --------Image sequence controller----------
@@ -89,14 +133,17 @@ class CircuitStage(CommonRunStage):
 
 		# --------Electrodes----------
 		self.circuit.subcircuit(SIROF('active', c0=Configuration().params["sirof_active_capacitance_nF"]))
-		self.circuit.subcircuit(SIROF('return',	
-			scaling= Configuration().params["return_to_active_area_ratio"] * (1 if is_bipolar else self.number_of_pixels),
-			c0=Configuration().params["sirof_active_capacitance_nF"]))
+		if is_mono_dr:
+			self.circuit.subcircuit(SIROF('return', c0=Configuration().params["sirof_capacitance"]*1E-2), Rdc=2E3)
+		else:
+			self.circuit.subcircuit(SIROF('return',	
+				scaling= Configuration().params["return_to_active_area_ratio"] * (1 if is_bipolar else self.number_of_pixels),
+				c0=Configuration().params["sirof_active_capacitance_nF"]), Vini=Configuration.params['Vini_ret'])
 		if is_bipolar:
 			edge_ar = Configuration().params["return_to_active_area_ratio"] * (1 + self.edge_factor)
 			self.circuit.subcircuit(SIROF('return_edge',	Vini=-Configuration().params["initial_Vactive"] / edge_ar,
 				scaling=edge_ar, c0=Configuration().params["sirof_active_capacitance_nF"]))
-		else:
+		elif not is_mono_dr:
 			self.circuit.V(f'CProbe{0}', self.circuit.gnd, f'Pt{0}', 0 @U.u_V)
 			self.circuit.X('Return', f"return PARAMS: Vini={Configuration().params['Vini_ret']}", f'Pt{0}', f'Saline{0}')
 
@@ -129,6 +176,30 @@ class CircuitStage(CommonRunStage):
 					#interconnection among the return electrodes
 					self.circuit.R(f'r{cross_idx}_{px_idx}', f'rSaline{cross_idx}', f'rSaline{px_idx}',  
 		    			"{:.3e}".format(self.resistive_mesh[px_idx+self.number_of_pixels-1, cross_idx+self.number_of_pixels-1]))
+			
+
+			if is_mono_dr:
+				for ret_idx in range(1, self.number_of_returns+1):
+					R = self.resistive_mesh[px_idx - 1, self.number_of_pixels + ret_idx - 1]
+					if np.isnan(R):
+						continue
+					self.circuit.R(f'ar{px_idx}_{ret_idx}', f'Saline{px_idx}', f'rSaline{ret_idx}', "{:.3e}".format(R))
+			
+
+		if is_mono_dr:
+			for ret_idx in range(1, self.number_of_returns + 1):
+				self.circuit.V(f'rCProbe{ret_idx}', self.circuit.gnd, f'rPt{ret_idx}', 0@U.u_V)
+				self.circuit.X(f'Return{ret_idx}', f"return PARAMS: Scale={self.ret_tri_area[ret_idx-1]}", f'rPt{ret_idx}', f'rSaline{ret_idx}')
+				
+				R = self.resistive_mesh[self.number_of_pixels + ret_idx - 1, self.number_of_pixels + ret_idx - 1]
+				if not np.isnan(R):
+					self.circuit.R(f'r{ret_idx}_{ret_idx}', f'rSaline{ret_idx}', f'Saline{0}', "{:.3e}".format(R))
+				# connections between each pair of return
+				for cross_idx in range(1, self.number_of_returns+1):
+					R = self.resistive_mesh[self.number_of_pixels + cross_idx - 1, self.number_of_pixels + ret_idx - 1]
+					self.circuit.R(f'r{cross_idx}_{ret_idx}', f'rSaline{cross_idx}', f'rSaline{ret_idx}', "{:.3e}".format(R))
+
+				
 			
 		# Conductance matrix compensation after thresholding:
 		if self.G_comp_flag:

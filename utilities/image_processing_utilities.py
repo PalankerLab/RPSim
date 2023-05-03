@@ -2,7 +2,7 @@ import numpy as np
 from PIL import Image as im
 
 
-def red_corners(img_in, n_target=1500):
+def red_corners(img_in, m_target=1500, n_target=1500):
     """
     This function finds the proper zoom range labeled by the red box to convert to projection pattern
     """
@@ -25,7 +25,7 @@ def red_corners(img_in, n_target=1500):
 
         img = img[y_min:y_max+1, x_min:x_max+1]
 
-    size_target = (n_target, n_target)
+    size_target = (m_target, n_target)
     # stretch the frame properly
     if not img.shape == size_target:
         img = im.fromarray(np.uint8(img.round()))
