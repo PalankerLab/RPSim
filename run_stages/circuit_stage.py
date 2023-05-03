@@ -44,9 +44,9 @@ class CircuitStage(CommonRunStage):
 			N_ret = dat['N_ret']
 			Gp = np.zeros((N_act+1, N_act+1))
 			Gp[:N_act, :N_act] = dat['G'][:N_act, :N_act]
-			Gp[:N_act, N_act] = np.sum(Gp[:N_act, N_act:], axis=1)
+			Gp[:N_act, N_act] = np.sum(dat['G'][:N_act, N_act:], axis=1)
 			Gp[N_act, :N_act] = Gp[:N_act, N_act]
-			Gp[N_act, N_act] = np.sum(Gp[N_act:, N_act:])
+			Gp[N_act, N_act] = np.sum(dat['G'][N_act:, N_act:])
 			
 			imag_basis = np.array(self.video_sequence["Frames"]).reshape((self.number_of_pixels, -1))
 			I_tot = np.sum(imag_basis, axis=0)
@@ -55,7 +55,10 @@ class CircuitStage(CommonRunStage):
 
 			Gs = 1/Configuration().params['shunt_resistance']
 			Gp += np.eye(N_act+1)*Gs
-			Gp[N_act, N_act] -= Gs
+			Gp[N_act, N_act] += np.eye(N_act+1)*Gs
+			Gp[:N_act, N_act] -= Gs
+			Gp[N_act, :N_act] -= Gs
+			
 			v_basis = np.linalg.solve(Gp, imag_basis)
 			ep_pad = np.outer( np.ones(N_ret-1), v_basis[-1, :] )
 			v_basis = np.concatenate((v_basis, ep_pad ), axis=0)
