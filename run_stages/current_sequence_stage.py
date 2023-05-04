@@ -80,6 +80,7 @@ class CurrentSequenceStage(CommonRunStage):
 													f'Frame{frame_idx + 1}',
 													f'Subframe{sub_frame_idx + 1}.bmp')
 				image = plt.imread(sub_frame_image_path).astype(float)
+				image = image[:,:,:3] # in case there is an alpha channel, discard
 				image = red_corners(image, m_target=3000, n_target=4000)
 
 				# fill in the photo-current of each pixel for each sub frame

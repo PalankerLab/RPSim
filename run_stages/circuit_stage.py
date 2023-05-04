@@ -75,7 +75,7 @@ class CircuitStage(CommonRunStage):
 			Smat[Smat==0] = np.nan
 			self.resistive_mesh = 1/Smat
 
-			self.number_of_returns = dat['N_ret']
+			self.number_of_returns = N_ret
 			self.ret_tri_area = dat['tri_area']
 		
 			self.G_comp_flag = True

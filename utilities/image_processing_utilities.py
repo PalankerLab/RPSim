@@ -25,7 +25,7 @@ def red_corners(img_in, m_target=1500, n_target=1500):
 
         img = img[y_min:y_max+1, x_min:x_max+1]
 
-    size_target = (m_target, n_target)
+    size_target = (n_target, m_target)
     # stretch the frame properly
     if not img.shape == size_target:
         img = im.fromarray(np.uint8(img.round()))
@@ -50,7 +50,8 @@ def img2pixel(img_in, label):
     """
     # convert to grayscale
     img = img_in[:, :, 0] * 0.2989 + img_in[:, :, 1] * 0.5870 + img_in[:, :, 2] * 0.1141
-    assert (img.shape == label.shape), "Dimension inconsistent between the input image and the label map."
+
+    assert (img.shape == label.shape), f"Dimension inconsistent between the input image and the label map."
 
     N_pixels = label.max()
     light_on_pixels = np.zeros(N_pixels)
