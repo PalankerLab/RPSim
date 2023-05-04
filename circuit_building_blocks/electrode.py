@@ -14,7 +14,7 @@ class SIROF(SubCircuit):
                             f"PARAMS: Vini={Vini} Scale={scaling}")
         #scaling accounts for the effects of area scaling on both R and C
         #Vini is the initial voltage across the caps
-        self.C('f', 't_in', 't_out', f"{c0}n * Scale", raw_spice="IC={Vini}")
+        self.C('f', 't_in', 't_out', f"{{{c0}n * Scale}}", raw_spice="IC={Vini}")
         #very large faradaic resistance by default
-        self.R('dc', 't_in', 't_out', f"{Rdc}G / Scale")
+        self.R('dc', 't_in', 't_out', f"{{{Rdc}G / Scale}}")
         return

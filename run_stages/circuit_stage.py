@@ -57,12 +57,12 @@ class CircuitStage(CommonRunStage):
 
 			Gs = 1/Configuration().params['shunt_resistance']
 			Gp += np.eye(N_act+1)*Gs
-			Gp[N_act, N_act] += np.eye(N_act+1)*Gs
+			Gp[N_act, N_act] += (N_act-1)*Gs
 			Gp[:N_act, N_act] -= Gs
 			Gp[N_act, :N_act] -= Gs
 
 			v_basis = np.linalg.solve(Gp, imag_basis)
-			ep_pad = np.outer( np.ones(N_ret-1), v_basis[-1, :] )
+			ep_pad = np.outer( np.ones(N_ret-1), v_basis[-1] )
 			v_basis = np.concatenate((v_basis, ep_pad ), axis=0)
 			(v_basis_om, _) = np.linalg.qr(v_basis)
 			i_basis = (dat['G'] - dat['G_cmp']) @ v_basis_om
@@ -139,7 +139,7 @@ class CircuitStage(CommonRunStage):
 		# --------Electrodes----------
 		self.circuit.subcircuit(SIROF('active', c0=Configuration().params["sirof_active_capacitance_nF"]))
 		if is_mono_dr:
-			self.circuit.subcircuit(SIROF('return', c0=Configuration().params["sirof_capacitance"]*1E-2), Rdc=2E3)
+			self.circuit.subcircuit(SIROF('return', c0=Configuration().params["sirof_capacitance"]*1E-2, Rdc=2E3))
 		else:
 			self.circuit.subcircuit(SIROF('return',	
 				scaling= Configuration().params["return_to_active_area_ratio"] * (1 if is_bipolar else self.number_of_pixels),
@@ -200,7 +200,7 @@ class CircuitStage(CommonRunStage):
 				if not np.isnan(R):
 					self.circuit.R(f'r{ret_idx}_{ret_idx}', f'rSaline{ret_idx}', f'Saline{0}', "{:.3e}".format(R))
 				# connections between each pair of return
-				for cross_idx in range(1, self.number_of_returns+1):
+				for cross_idx in range(1, ret_idx):
 					R = self.resistive_mesh[self.number_of_pixels + cross_idx - 1, self.number_of_pixels + ret_idx - 1]
 					self.circuit.R(f'r{cross_idx}_{ret_idx}', f'rSaline{cross_idx}', f'rSaline{ret_idx}', "{:.3e}".format(R))
 
@@ -215,6 +215,13 @@ class CircuitStage(CommonRunStage):
 		       							f'Saline{px_idx}', f'Saline{0}', "{:.3e}".format(self.G_comp['v_basis'][px_idx-1, comp_idx]))
 					self.circuit.VCCS(f'comp{comp_idx}_px{px_idx}', f'Saline{px_idx}', f'Saline{0}',
 		       							f'comp{comp_idx}', self.circuit.gnd, "{:.3e}".format(self.G_comp['i_basis'][px_idx-1, comp_idx]))
-		
+				
+				if is_mono_dr:
+					for ret_idx in range(1, self.number_of_returns + 1):
+						self.circuit.VCCS(f'ret{ret_idx}_comp{comp_idx}', self.circuit.gnd, f'comp{comp_idx}',
+		       							f'rSaline{ret_idx}', f'Saline{0}', "{:.3e}".format(self.G_comp['v_basis'][self.number_of_pixels + ret_idx-1, comp_idx]))
+						self.circuit.VCCS(f'comp{comp_idx}_ret{ret_idx}', f'rSaline{ret_idx}', f'Saline{0}',
+		       							f'comp{comp_idx}', self.circuit.gnd, "{:.3e}".format(self.G_comp['i_basis'][self.number_of_pixels + ret_idx-1, comp_idx]))
+
 		return self.circuit
 
