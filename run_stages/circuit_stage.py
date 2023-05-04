@@ -202,6 +202,8 @@ class CircuitStage(CommonRunStage):
 				# connections between each pair of return
 				for cross_idx in range(1, ret_idx):
 					R = self.resistive_mesh[self.number_of_pixels + cross_idx - 1, self.number_of_pixels + ret_idx - 1]
+					if np.isnan(R):
+						continue
 					self.circuit.R(f'r{cross_idx}_{ret_idx}', f'rSaline{cross_idx}', f'rSaline{ret_idx}', "{:.3e}".format(R))
 
 				
