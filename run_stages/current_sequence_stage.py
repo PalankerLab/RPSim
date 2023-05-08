@@ -40,7 +40,8 @@ class CurrentSequenceStage(CommonRunStage):
 			self.image_label = pickle.load(f)
 
 		# extract number of pixels
-		self.number_of_pixels = self.image_label.max()
+		self.number_of_pixels = Configuration().params["number_of_pixels"]
+		self.image_label[self.image_label > self.number_of_pixels] = 0 #self.image_label.max()
 
 		self.script = list()
 		self.max_photo_current_in_ua = None

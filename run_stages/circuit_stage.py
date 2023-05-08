@@ -77,6 +77,11 @@ class CircuitStage(CommonRunStage):
 
 			self.number_of_returns = N_ret
 			self.ret_tri_area = dat['tri_area']
+			if Configuration().params['Vini_ret'].size == 1:
+				area_act = np.pi * Configuration().params["active_electrode_radius"]**2 * N_act
+				area_ret = np.sum(self.ret_tri_area)
+				V_ret = -np.mean(Configuration().params['Vini_act']) * area_act / area_ret
+				Configuration().params['Vini_ret'] = V_ret * np.ones(N_ret)
 		
 			self.G_comp_flag = True
 			
@@ -194,7 +199,9 @@ class CircuitStage(CommonRunStage):
 		if is_mono_dr:
 			for ret_idx in range(1, self.number_of_returns + 1):
 				self.circuit.V(f'rCProbe{ret_idx}', self.circuit.gnd, f'rPt{ret_idx}', 0@U.u_V)
-				self.circuit.X(f'Return{ret_idx}', f"return PARAMS: Scale={self.ret_tri_area[ret_idx-1]}", f'rPt{ret_idx}', f'rSaline{ret_idx}')
+				self.circuit.X(f'Return{ret_idx}',
+		   			f"return PARAMS: Vini={Configuration().params['Vini_ret'][ret_idx-1]} Scale={self.ret_tri_area[ret_idx-1]}",
+					f'rPt{ret_idx}', f'rSaline{ret_idx}')
 				
 				R = self.resistive_mesh[self.number_of_pixels + ret_idx - 1, self.number_of_pixels + ret_idx - 1]
 				if not np.isnan(R):

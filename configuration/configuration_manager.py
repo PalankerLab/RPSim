@@ -255,8 +255,16 @@ class Configuration(metaclass=Singleton):
 			t = sim_res_dict['time']*1E3 - self.params["initial_Vactive"][1]
 			self.params['Vini_act'] = np.array([ np.interp(0, t, sim_res_dict[f'Pt{x+1}'] - sim_res_dict[f'Saline{x+1}'])
 		       for x in range(self.params["number_of_pixels"])])    #V
-			self.params['Vini_ret'] = np.interp(0, t, sim_res_dict[f'Pt{0}'] - sim_res_dict[f'Saline{0}'])    #V
-
+			
+			if self.params['model'] == 'monopolar_DR':
+				self.params["number_of_returns"] = 1
+				while f'rSaline{self.params["number_of_returns"]}' in sim_res_dict.keys():
+					self.params["number_of_returns"] += 1
+				self.params["number_of_returns"] -= 1
+				self.params['Vini_ret'] = np.array([np.interp(0, t, sim_res_dict[f'rPt{x+1}'] - sim_res_dict[f'rSaline{x+1}'])
+					for x in range(self.params["number_of_returns"])])
+			else:
+				self.params['Vini_ret'] = np.interp(0, t, sim_res_dict[f'Pt{0}'] - sim_res_dict[f'Saline{0}'])
 		else:
 			self.params['Vini_act'] = self.params["initial_Vactive"] * np.ones(self.params["number_of_pixels"])
 			self.params['Vini_ret'] = -self.params["initial_Vactive"] / self.params["return_to_active_area_ratio"]
