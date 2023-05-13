@@ -77,7 +77,7 @@ class CircuitStage(CommonRunStage):
 
 			self.number_of_returns = N_ret
 			self.ret_tri_area = dat['tri_area']
-			if Configuration().params['Vini_ret'].size == 1:
+			if (type(Configuration().params["initial_Vactive"]) is not tuple):
 				area_act = np.pi * Configuration().params["active_electrode_radius"]**2 * N_act
 				area_ret = np.sum(self.ret_tri_area)
 				V_ret = -np.mean(Configuration().params['Vini_act']) * area_act / area_ret
