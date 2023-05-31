@@ -5,6 +5,8 @@ from pathlib import Path
 from datetime import datetime
 from distutils.dir_util import copy_tree
 
+import matplotlib.pyplot
+
 
 class CommonUtils:
     """
@@ -87,7 +89,11 @@ class CommonUtils:
             copy_tree(output, output_directory)
             return
 
-        # define file name
+        # check if need to complete file name
+        if not file_name and isinstance(output, matplotlib.pyplot.Figure):
+            file_name = output._suptitle.get_text()
+
+        # define file path
         output_path = os.path.join(output_directory, file_name)
 
         # create directory and parents, if they do not exist

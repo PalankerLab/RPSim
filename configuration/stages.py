@@ -13,13 +13,14 @@ class RunStages(Enum):
 	current_sequence = ("current_sequence", 1)
 	circuit = ("circuit", 2)
 	simulation = ("simulation", 3)
-	post_process = ("post_process", 4)
-	plot_results = ("plot_results", 5)
+	post_process = ("post_process", 4, False)
+	plot_results = ("plot_results", 5, False)
 
-	def __new__(cls, value, number):
+	def __new__(cls, value, number, mandatory=True):
 		run_stage = object.__new__(cls)
 		run_stage._value_ = value
 		run_stage.number = number
+		run_stage.mandatory = mandatory
 		return run_stage
 
 
@@ -52,5 +53,10 @@ class StageManager:
 		:return: corresponding stage name
 		"""
 		return [run_stage.name for run_stage in RunStages if run_stage.number == index][0]
+
+	@staticmethod
+	def get_mandatory_stages():
+		return [run_stage.name for run_stage in RunStages if run_stage.mandatory == True]
+
 
 

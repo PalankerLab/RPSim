@@ -59,7 +59,7 @@ class ResistiveMeshStage(CommonRunStage):
 			px_pos = np.loadtxt(Configuration().params["r_matrix_input_file_px_pos"], delimiter=',')
 
 			active_r = Configuration().params["active_electrode_radius"]
-			return_w = Configuration().params["return_width"]
+			return_w = (Configuration().params["pixel_size"] - Configuration().params["photosensitive_area_edge_to_edge"]) / 2
 			px_size = Configuration().params["pixel_size"]
 			N_px = px_pos.shape[0]
 

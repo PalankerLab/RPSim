@@ -7,6 +7,7 @@ certain point
 import os
 import shutil
 from collections import defaultdict, Counter
+from pathlib import Path
 
 from configuration.configuration_manager import Configuration
 from configuration.stages import RunStages, StageManager
@@ -36,9 +37,6 @@ class RunManager:
 		self.output_directory = output_directory
 		self.outputs_container = defaultdict(list)
 
-		# check whether to look for previous runs
-		self.find_previous_runs = self._should_look_for_previous_runs(run_stages)
-
 		# if none are provided, run all stages
 		self.run_stages = list()
 		skip_stages = skip_stages if skip_stages else list()
@@ -52,6 +50,12 @@ class RunManager:
 		# make sure we do not have any excess spaces
 		self.run_stages = list(map(str.strip, self.run_stages))
 
+		# define non-mandatory stages
+		self.mandatory_stages = StageManager.get_mandatory_stages()
+
+		# check whether to look for previous runs
+		self.find_previous_runs = self._should_look_for_previous_runs(self.run_stages)
+
 	@staticmethod
 	def _stage_data_factory(stage):
 		if stage == RunStages.resistive_mesh.name:
@@ -63,7 +67,7 @@ class RunManager:
 		elif stage == RunStages.simulation.name:
 			stage_data = SimulationStage, ["simulation_results.pkl"], ""
 		elif stage == RunStages.post_process.name:
-			stage_data = PostProcessStage, ["4D_potential_matrix_with_time_and_coordinates"], ""
+			stage_data = PostProcessStage, ["4D_potential_matrix_with_time_and_coordinates.pkl"], RunStages.post_process.name
 		elif stage == RunStages.plot_results.name:
 			stage_data =  PlotResultsStage, ["diode_voltage_vs_time.png", "current_vs_time.png"], ""
 		else:
@@ -71,10 +75,14 @@ class RunManager:
 
 		return dict(zip(["constructor", "output_file_names", "output_directory_name"], stage_data))
 
-	@staticmethod
-	def _should_look_for_previous_runs(requested_run_stages):
-		return True if (requested_run_stages and Counter(requested_run_stages) != Counter(
-			StageManager.get_all_available_run_stages())) else False
+	def _should_look_for_previous_runs(self, requested_run_stages):
+		# check if number of requested stages is smaller than the total available number of stages
+		if requested_run_stages and Counter(requested_run_stages) != Counter(StageManager.get_all_available_run_stages()):
+			# if so, check if we are missing necessary stages
+			if not all(stage in requested_run_stages for stage in self.mandatory_stages):
+				return True
+
+		return False
 
 	def initialize_stage(self, stage):
 		stage_data = self._stage_data_factory(stage)
@@ -99,6 +107,9 @@ class RunManager:
 
 	def get_stage_output_directory_name(self, stage):
 		return self._stage_data_factory(stage)["output_directory_name"]
+
+	def get_stage_output_directory(self, stage):
+		return os.path.join(self.output_directory, self.get_stage_output_directory_name(stage))
 
 	def get_requested_run_stages(self):
 		"""
@@ -152,16 +163,22 @@ class RunManager:
 							break
 
 			if not file_found:
-				raise NeededOutputNotFound("Couldn't find output file {} for stage {} in any of the previous runs, "
-										   "please run needed stages", output_file, skipped_stage)
+				if skipped_stage in self.mandatory_stages:
+					raise NeededOutputNotFound("Couldn't find output file {} for stage {} in any of the previous runs, "
+										   "please run needed stages".format(output_file, skipped_stage))
 
 		return missing_outputs
 
 	def add_missing_outputs_to_current_run(self, skipped_stage, missing_outputs):
+		# create destination directory, if doesn't exist
+		destination_directory = self.get_stage_output_directory(skipped_stage)
+		Path(destination_directory).mkdir(parents=True, exist_ok=True)
+
+		# restore missing output files
 		for output in missing_outputs:
 			# add to simulation flow
 			self.outputs_container[skipped_stage].append(CommonUtils.load_output(output))
 			# add to output_directory
-			shutil.copy(output, self.output_directory)
+			shutil.copy(output, destination_directory)
 
 

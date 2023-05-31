@@ -39,12 +39,13 @@ class SimulationStage(CommonRunStage):
 									  nominal_temperature=Configuration().params["nominal_temperature"],
 									  xyce_command = 'Xyce')
 		# run simulation
-		analysis = simulator.transient(step_time=(video_sequence['time_step']) @ U.u_ms,
-									   end_time=(Configuration().params["simulation_duration"]) @ U.u_s)
+		max_step = Configuration().params.get("simulation_resolution_ms")
+		analysis = simulator.transient(step_time=video_sequence['time_step'] @ U.u_ms,
+									   end_time=Configuration().params["simulation_duration_sec"] @ U.u_s,
+									   max_time=(max_step @ U.u_ms) if max_step else None)
 
 		# select the nodes of interest to save. automatic completion of the suffixed numerical indices
-		return self._format_output(analysis, sim_mode='trans',
-								   nodes_select={'Pt', 'VCProbe', 'Saline', 'VrCProbe', 'rPt', 'rSaline'})
+		return self._format_output(analysis, sim_mode='trans',nodes_select={'Pt', 'VCProbe', 'Saline', 'VrCProbe', 'rPt', 'rSaline'})
 	@staticmethod
 	def _format_output(analysis, sim_mode=[], nodes_select={}, delay=0):
 		"""

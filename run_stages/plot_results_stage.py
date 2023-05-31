@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 
+from configuration.configuration_manager import Configuration
 from run_stages.common_run_stage import CommonRunStage
 from configuration.stages import RunStages
 
@@ -12,7 +13,6 @@ class PlotResultsStage(CommonRunStage):
 	def __init__(self, *args):
 		super().__init__(*args)
 		self.simulation_results = self.outputs_container[RunStages.simulation.name][0]
-
 	@property
 	def stage_name(self):
 		return RunStages.plot_results.name
@@ -46,6 +46,7 @@ class PlotResultsStage(CommonRunStage):
 		plt.xlabel("Time (ms)")
 		plt.grid()
 		output_figures.append(fig2)
+
 
 		return output_figures
 
