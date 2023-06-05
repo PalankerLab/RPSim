@@ -301,9 +301,9 @@ class PostProcessStage(CommonRunStage):
 
 		# plot
 		figures = list()
-		for z_index, z_value in enumerate(self.z_values):
-			figure = self._create_potential_plot_per_depth(voltage_4d_matrix, frame_width, z_index, z_value)
-			figures.append(figure)
+		# for z_index, z_value in enumerate(self.z_values):
+		# 	figure = self._create_potential_plot_per_depth(voltage_4d_matrix, frame_width, z_index, z_value)
+		# 	figures.append(figure)
 
 		# visualize electric field in 3D
 		# fig = plt.figure()
