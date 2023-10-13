@@ -59,8 +59,6 @@ def create_distance_matrix(electrode_pixel_size):
         (e.g. for 4 columns the distance is [-2, -1, 0, 1])
     Same principle for an even number of rows, the zero will be centered towards the bottom
 
-    For taking non-square, as well as odd and even input images, all the tricky + 1 and -1 are unfortunately necessary :/ 
-
         Parameters:
             electrode_pixel_size (int): the electrode size in micron
         
@@ -72,32 +70,10 @@ def create_distance_matrix(electrode_pixel_size):
     file = f'../user_files/user_input/image_sequence/pixel_label_PS{electrode_pixel_size}.pkl'
     with open(file, 'rb') as f:
         label = pickle.load(f)
-    
-    num_rows, num_columns = label.shape
-    # Create an array with increasing values, centered around 0
-    horizontal_dist = np.arange(-(num_columns // 2), num_columns // 2 + 1)
-    vertical_dist = np.arange(-(num_rows // 2), num_rows // 2 + 1)
-    # Replicate it horizontally and vertically
-    horizontal_dist = np.abs(np.tile(horizontal_dist, (num_rows + 1, 1)))
-    vertical_dist = np.abs(np.tile(vertical_dist, (num_columns + 1, 1)))
-    # Rotate because Numpy creates horizontal array 
-    vertical_dist = np.rot90(vertical_dist, 1)
-
-    # Crop by 1 row, if the row number is odd
-    if num_rows % 2 == 1:
-        horizontal_dist = horizontal_dist[ :-1, :]
-    # Crop by 1 column, if the column number is odd
-    if num_columns % 2 == 1:
-        vertical_dist = vertical_dist[ :, :-1]
-
-    # Sum the vertical and horizontal matrix to get the distance matrix 
-    dist_matrix = horizontal_dist + vertical_dist
-
-    # If the row or column are even, we have to crop by 1 unit here
-    if num_rows % 2 == 0:
-        dist_matrix = dist_matrix[ :-1, :]
-    if num_columns % 2 == 0:
-        dist_matrix = dist_matrix[ :, :-1]
+    # Number of rows and columns
+    rows, columns = label.shape
+    vertical_dist, horizontal_dist = np.mgrid[np.ceil(-columns/2):np.ceil(columns/2), np.ceil(-rows/2):np.ceil(rows/2)]
+    dist_matrix = np.abs(vertical_dist) + np.abs(horizontal_dist)
 
     return dist_matrix, label
 
@@ -239,6 +215,10 @@ def determine_location_letter(electrode_pixel_size, text, letter_size, position)
 
 def draw_overlay_projection(electrode_pixel_size, font, center, text):
 
+    """
+        Not used anymore, was replaced by draw_letter
+    """
+
     path = f"../user_files/user_input/image_sequence/Grid_PS{electrode_pixel_size}.png"
     background = Image.open(path, 'r')
     text_only = Image.new("RGB", background.size, "black")
@@ -257,11 +237,11 @@ def draw_overlay_projection(electrode_pixel_size, font, center, text):
     
     return background, text_only
 
-def draw_overlay_projection_rotation(electrode_pixel_size, letter_size, position_user, text, rotation):
+def draw_letter(electrode_pixel_size, letter_size, position_user, text, rotation):
     """
-    Returns two images,the actual projected image, and the projected image with the electrode pattern as background
+    
     This is the final function which assembles all the pieces to project a letter. 
-
+    # TODO either adapt the code to support whole text, or change variable name to letter instea of text
         Parameters:
             electrode_pixel_size (int): Size of the electrode in micron
             letter_size (float): The letter's size as a multiple of the elec. pixel size
@@ -269,8 +249,8 @@ def draw_overlay_projection_rotation(electrode_pixel_size, letter_size, position
             text (int): The letter (or eventually test) text to be projected 
         
         Return:
-            background_overlay (PIL.Image): The electrode pattern as background, and the projected image as overlay
-            background_projected (PIL.Image): A black screen as background, and the projected image as overlay
+            position_actual (int, int): The position to use when pasting the letter image into the projected/overlay image
+            text_image (PIL.Image): An image of the letter on black background with the correct size and orientation
     """
     # Define the size of the text image - TODO adapt for more than one letter
     image_size = (electrode_pixel_size * letter_size, electrode_pixel_size * letter_size)
@@ -286,22 +266,105 @@ def draw_overlay_projection_rotation(electrode_pixel_size, letter_size, position
     # Rotate with expansion of the image (i.e. no crop)
     text_image = text_image.rotate(rotation, expand = 1)
 
-    # Load backgrond image (the electrode pattern)
-    path = f"../user_files/user_input/image_sequence/Grid_PS{electrode_pixel_size}.png"
-    background_overlay = Image.open(path, 'r')
-    background_projected = Image.new("RGB", background_overlay.size, "black")
-
     # Compute the new position taking into account the offset required by the user, and the new size due to rotation expansion
     center_x -= text_image.size[0]/2
     center_y -= text_image.size[1]/2
     position_actual = (int(center_x), int(center_y))
 
+    return position_actual, text_image
+
+def rotate_point(x, y, theta):
+    """
+    Rotates a point counterclockwise about the origin
+        Parameters:
+            x (int): X position
+            y (int): Y position 
+            theta (float): Rotation angle in radian
+    """
+    x_rot = x * np.cos(theta) - y * np.sin(theta)
+    y_rot = x * np.sin(theta) + y * np.cos(theta)
+    return x_rot, y_rot
+
+def draw_grating(img_size, width_grating, pitch_grating, rotation, position_user):
+    """
+    Draw a rectangular grating of width width_grating spaced (edge to edge) by pitch_grating
+    WARNING the position is not enabled yet
+
+        Parameters:
+            img_size (tuple): the size of the projected image
+            width_grating (int): The width of grating in micron
+            pitch_grating (int): The shorted distance separating each grating (edge to edge) 
+            rotation (float): The rotation of the grating in degrees
+            position_user (int, int): The grating shift (TODO not impemented yet)
+        
+        Returns:
+            grating_only (PIL.Image): The image of the grating with alpha transparency enabled
+    """
+
+    if position_user != (0, 0):
+        warnings.warn("The position cannot be shifted yet. Set to (0, 0) instead.")
+
+    width, height = img_size
+    theta = np.deg2rad(rotation)
+
+    grating_only = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    drawing_grating = ImageDraw.Draw(grating_only)    
+    
+    # The grating always span the whole Y-axis even if we rotate
+    # Hence y low and y high are higher than the width 
+    theta = np.deg2rad(rotation)
+    y_l, y_h = -width, height + width
+
+    # Draw each rectangle from left to right
+    list_x_pos = np.arange(-width, 2 * width, width_grating + pitch_grating)
+    for x_pos in list_x_pos:
+        points = [] 
+        points.append(rotate_point(x_pos, y_l, theta))  # Top left
+        points.append(rotate_point(x_pos + width_grating, y_l, theta))  # Top right
+        points.append(rotate_point(x_pos + width_grating, y_h, theta))  # Bottom right
+        points.append(rotate_point(x_pos, y_h, theta))  # Bottom left
+        # Draw rotated rectangle
+        drawing_grating.polygon(points, fill="white", outline=None)
+    
+    return grating_only
+
+def draw_projected_overlay(electrode_pixel_size, type, args):
+    """
+    Returns two images,the actual projected image, and the projected image with the electrode pattern as background
+    A function calling all lower-level functions
+
+        Parameters:
+            electrode_pixel_size (int): Size of the electrode in micron
+            type (string): The type of drawing to do
+            args (misc): to be forwarded to the lower-level functions
+        
+        Return:
+            overlay (PIL.Image): The electrode pattern as background, and the projected image as overlay
+            projected (PIL.Image): A black screen as background, and the projected image as overlay
+    """
+
+    path_image = f"../user_files/user_input/image_sequence/Grid_PS{electrode_pixel_size}.png"
+    #path_label = f"../user_files/user_input/image_sequence/pixel_label_PS{electrode_pixel_size}.pkl"
+    
+    overlay = Image.open(path_image, 'r')
+    projected = Image.new("RGB", overlay.size, "black")
+
+    # TODO make it more robust with kwargs and stuff
+    if type == "grating":
+        to_be_projected = draw_grating(overlay.size, args[0], args[1], args[2], args[3])
+        position_actual = (0, 0)
+    elif type == "letter":
+        position_actual, to_be_projected = draw_letter(electrode_pixel_size, args[0], args[1], args[2], args[3])
+        
+    else:
+        raise NotImplementedError
+    
     # Create the final images
-    background_overlay.paste(text_image, position_actual, text_image)
-    background_projected.paste(text_image, position_actual, text_image)
+    overlay.paste(to_be_projected, position_actual, to_be_projected)
+    projected.paste(to_be_projected, position_actual, to_be_projected)
 
     # Add the red frame around the projected image
-    drawing_projection = ImageDraw.Draw(background_projected)
-    drawing_projection.rectangle([0, 0, background_projected.size[0] - 1, background_projected.size[1] - 1], outline="red", width=2)
+    drawing_projection = ImageDraw.Draw(projected)
+    drawing_projection.rectangle([0, 0, projected.size[0] - 1, projected.size[1] - 1], outline="red", width=2)
 
-    return background_overlay, background_projected
+    return overlay, projected
