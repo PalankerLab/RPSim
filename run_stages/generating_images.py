@@ -285,39 +285,48 @@ def rotate_point(x, y, theta):
     y_rot = x * np.sin(theta) + y * np.cos(theta)
     return x_rot, y_rot
 
-def draw_grating(img_size, width_grating, pitch_grating, rotation, position_user):
+def draw_grating(electrode_pixel_size, img_size, width_grating, pitch_grating, rotation, position_user):
     """
     Draw a rectangular grating of width width_grating spaced (edge to edge) by pitch_grating
     WARNING the position is not enabled yet
 
         Parameters:
+            electrode_pixel_size (int): Size of the electrode in micron
             img_size (tuple): the size of the projected image
             width_grating (int): The width of grating in micron
             pitch_grating (int): The shorted distance separating each grating (edge to edge) 
-            rotation (float): The rotation of the grating in degrees
-            position_user (int, int): The grating shift (TODO not impemented yet)
+            rotation (float): The rotation of the grating in degrees - Between -90° and 90° included
+            position_user (float, int): The position of the grating with respect to the central pixel, move with respect to the pixel size along the X-axis. Y-axis is not implemented yet.  
         
         Returns:
             grating_only (PIL.Image): The image of the grating with alpha transparency enabled
     """
-
-    if position_user != (0, 0):
-        warnings.warn("The position cannot be shifted yet. Set to (0, 0) instead.")
+    
+    if (np.abs(rotation) > 90):
+        raise ValueError("The rotation angle shoud be between -90° <= rotation <= 90°")
+    if position_user[1] != 0:
+        warnings.warn("The Y position cannot be shifted. Y is set to 0 instead.")
 
     width, height = img_size
     theta = np.deg2rad(rotation)
 
-    grating_only = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    drawing_grating = ImageDraw.Draw(grating_only)    
-    
-    # The grating always span the whole Y-axis even if we rotate
-    # Hence y low and y high are higher than the width 
-    theta = np.deg2rad(rotation)
-    y_l, y_h = -width, height + width
+    # We want the grating to overlap the central pixel, hence offset by half the grating rotated width
+    offset_x = int( np.cos(theta) * width_grating / 2 ) + position_user[0] * electrode_pixel_size
+    center_x, center_y = find_center(electrode_pixel_size)
 
-    # Draw each rectangle from left to right
-    list_x_pos = np.arange(-width, 2 * width, width_grating + pitch_grating)
-    for x_pos in list_x_pos:
+    # Compute the bottom left corner of the grating, from the image center to the right
+    fwd_x_pos = np.arange(center_x - offset_x, 2 * width, width_grating + pitch_grating)
+    # Compute the bottom left corner of the grating, from the image center to the left
+    bckwd_x_pos = np.arange(center_x - offset_x -(width_grating + pitch_grating), - 2 * width, - (width_grating + pitch_grating))
+    list_x_positions = np.hstack((bckwd_x_pos, fwd_x_pos))
+
+    grating_only = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    drawing_grating = ImageDraw.Draw(grating_only)
+       
+    # # The grating always span the whole Y-axis -> it can be larger than the height, and should be high enough to withstand a rotation
+    y_l, y_h = -width, height + width
+    # Remember that PIL has the origin at the top left corner
+    for x_pos in list_x_positions:
         points = [] 
         points.append(rotate_point(x_pos, y_l, theta))  # Top left
         points.append(rotate_point(x_pos + width_grating, y_l, theta))  # Top right
@@ -351,7 +360,7 @@ def draw_projected_overlay(electrode_pixel_size, type, args):
 
     # TODO make it more robust with kwargs and stuff
     if type == "grating":
-        to_be_projected = draw_grating(overlay.size, args[0], args[1], args[2], args[3])
+        to_be_projected = draw_grating(electrode_pixel_size, overlay.size, args[0], args[1], args[2], args[3])
         position_actual = (0, 0)
     elif type == "letter":
         position_actual, to_be_projected = draw_letter(electrode_pixel_size, args[0], args[1], args[2], args[3])
