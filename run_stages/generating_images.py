@@ -4,26 +4,6 @@ import pickle
 import warnings
 import numpy as np
 
-def determine_text_offset(text, draw, font):
-    """
-    This function detects the longest text line, determines its size and
-    returns the offset along the X-axis for correctly centering the text. 
-    The text x center is computed as the image center, minus the offset divided by two.|
-
-    WARNING: This function is no longer used as I discovered the text anchor option "mm" which
-    directly computes the offset for the X and Y position. 
-
-    Return: the offset size in pixels
-    """
-    # Determine which line is the longest in a multiline text
-    longest_line, max = '', 0
-    for line in text.splitlines():
-        if len(line) > max:
-            longest_line = line
-            max = len(line)
-    
-    # Compute the x offset for centering the text
-    return draw.textlength(longest_line, font)/2
 
 def determine_center_hex(path_label, center):
     """
@@ -129,7 +109,7 @@ def find_center(electrode_pixel_size):
 
     return center_x, center_y
 
-def determine_font_size(electrode_pixel_size, image_width, text_size, text):
+def determine_font_size(electrode_pixel_size, image_width, letter_size, text):
     """
     Determines the adequate font size such that a Landolt C cover a certain
     fraction of an electrode pixel. Currently the fraction is fixed to 1.
@@ -140,21 +120,25 @@ def determine_font_size(electrode_pixel_size, image_width, text_size, text):
     Params:
         electrode_pixel_size (int): The size in micron
         width (int): The image width (based on the pattern we are drawing on)
-        text_size (float): The size of the letters with respect to the pixel size
+        letter_size (float): The size of capital letter as a multiple of the pixel size
 
     Returns (ImageDraw.font): The preloaded font with the correct size  
     """    
+    
+    # All capital letters have the same size (or bounding box), and we want to calibrate the 
+    # font size according to a capital letter. We don't want lower-case or punctuation characters 
+    text = "C"
+    
     # Image fraction represents the proportion the text should take with respect to the image.
     # In this case, the letter size are multiples of the electrode pixel size. 
     # WARNING the big assumption is that the png image of the layout has a scale such 1 pixel = micron, which seems true after measuring the images in ImageJ
-    # TODO improve the criterion img_fraction to take into account word or sentences, not only letters
-    img_fraction = electrode_pixel_size * text_size / image_width 
+    img_fraction = electrode_pixel_size * letter_size / image_width 
 
     # starting font size
     font_size = 1
     font = ImageFont.truetype("Sloan.otf", font_size)
     while font.getlength(text) < img_fraction * image_width:
-        # iterate until the text size is just larger than the criteria
+        # Iterate until the text size is slightly larger than the criteria
         font_size += 1
         font = ImageFont.truetype("Sloan.otf", font_size)
     
@@ -168,7 +152,7 @@ def determine_location_letter(electrode_pixel_size, text, letter_size, position)
         Parameters:
             electrode_pixel_size (int): Size of the electrode in micron
             text (int): The letter (or eventually test) text to be projected 
-            letter_size (float): The letter's size as a multiple of the elec. pixel size
+            letter_size (float): The size of capital letter as a multiple of the pixel size
             position ((float, float)): The position with respect to the central electrode as multiple of the elec. pixel size. Half electrode means going toward the diagonal
 
         Returns:
@@ -176,8 +160,6 @@ def determine_location_letter(electrode_pixel_size, text, letter_size, position)
             center_x (int): Letter's X position
             center_y (int): Letter's Y position
     """
-    if len(text) > 1:
-        warnings.warn("This function is implemented for letters only. It is not ready yet for senteces.")
 
     path = f"../user_files/user_input/image_sequence/Grid_PS{electrode_pixel_size}.png"
     background = Image.open(path, 'r')
@@ -188,13 +170,6 @@ def determine_location_letter(electrode_pixel_size, text, letter_size, position)
     
     # Find the font size matching the electrode pixel size
     font = determine_font_size(electrode_pixel_size, width, letter_size, text)
-
-    # TODO discard this part of the code once I am sure it is no longer useful
-    # After finding the correct font size, test it 
-    #path_label = f"../user_files/user_input/image_sequence/pixel_label_PS{electrode_pixel_size}.pkl"
-    #center_x, center_y = determine_center_hex(path_label, electrode_label_number)
-    # Correct for the offset of the shape
-    #offset = determine_text_offset(text, draw, font) No longer used by changing the text anchor
     
     # Determine the center of the central electrode
     center_x, center_y = find_center(electrode_pixel_size)
@@ -213,35 +188,33 @@ def determine_location_letter(electrode_pixel_size, text, letter_size, position)
     
     return font, center_x, center_y
 
-def draw_overlay_projection(electrode_pixel_size, font, center, text):
-
+def convert_user_position_to_actual(electrode_pixel_size, center, position_user, width, height):
     """
-        Not used anymore, was replaced by draw_letter
+    Convert the user position to a shift, add it to the central electrode, and subtract the offset of the figure size
+    Return the position where the image should be located on the projected image
     """
 
-    path = f"../user_files/user_input/image_sequence/Grid_PS{electrode_pixel_size}.png"
-    background = Image.open(path, 'r')
-    text_only = Image.new("RGB", background.size, "black")
-
-    # Convert the images to drawings
-    draw_overlay = ImageDraw.Draw(background)
-    draw_projection = ImageDraw.Draw(text_only)
-
-    # Draw the text over the background to check the correct alignment
-    draw_overlay.text(center, text, font=font, fill="white", align='center', anchor='mm')
-    #draw_overlay.text(center, text, font=font, fill="white", align='center')
+    # TODO integrate this function in the other functions 
+    # Move the letter by multiple of the pixel size as requested by the user
+    center_x, center_y = center
+    shift_x, shift_y = position_user
+    # TODO the translation is not perfect, double check how to adjust it    
+    # As the pattern is a honeycomb and not a grid, half pixel should be taken into account
+    rounded_x = np.round(shift_x)
+    if shift_x == rounded_x: # TODO do more test to check whether this calculation make sense
+        center_x += shift_x * electrode_pixel_size
+    else:
+        center_x += (rounded_x - np.sign(shift_x) * np.sin(np.pi * 30/180)) * electrode_pixel_size 
     
-    # Draw the red frame and text on the projected image (black background)
-    draw_projection.text(center, text, font=font, fill="white", align='center', anchor="mm")
-    draw_projection.rectangle([0, 0, background.size[0] - 1, background.size[1] - 1], outline="red", width=2)
+    center_y +=  shift_y * np.cos(np.pi * 30/180) * electrode_pixel_size
     
-    return background, text_only
+    return int(center_x - width/2), int(center_y - height/2)
 
-def draw_letter(electrode_pixel_size, letter_size, position_user, text, rotation):
+
+def draw_text(electrode_pixel_size, letter_size, position_user, text, rotation):
     """
-    
     This is the final function which assembles all the pieces to project a letter. 
-    # TODO either adapt the code to support whole text, or change variable name to letter instea of text
+    
         Parameters:
             electrode_pixel_size (int): Size of the electrode in micron
             letter_size (float): The letter's size as a multiple of the elec. pixel size
@@ -252,17 +225,20 @@ def draw_letter(electrode_pixel_size, letter_size, position_user, text, rotation
             position_actual (int, int): The position to use when pasting the letter image into the projected/overlay image
             text_image (PIL.Image): An image of the letter on black background with the correct size and orientation
     """
-    # Define the size of the text image - TODO adapt for more than one letter
-    image_size = (electrode_pixel_size * letter_size, electrode_pixel_size * letter_size)
-
-    # Create a new image with a transparent background
+    
+    # Determine image size
+    lines = text.splitlines()
+    n_lines = len(lines)
+    max_len = len(max(lines, key=len))
+    image_size = (electrode_pixel_size * letter_size * max_len, electrode_pixel_size * letter_size * n_lines)
+    # Create a rnew image with a transparent background
     text_image = Image.new('RGBA', image_size, (0, 0, 0, 0))
 
     # Convert to drawing, set the font, and write text
     text_drawing = ImageDraw.Draw(text_image)
     font, center_x, center_y = determine_location_letter(electrode_pixel_size, text, letter_size, position_user)
-    text_drawing.text((0, 0), text, font=font, fill="white", align='center')
-
+    text_drawing.text((0, 0), text, font=font, fill="white", align='center', spacing=0) # TODO check for the desired spacing, if non-zero, increase image_size height by spacing, eventually use ImageDraw.textbox() 
+    
     # Rotate with expansion of the image (i.e. no crop)
     text_image = text_image.rotate(rotation, expand = 1)
 
@@ -270,6 +246,7 @@ def draw_letter(electrode_pixel_size, letter_size, position_user, text, rotation
     center_x -= text_image.size[0]/2
     center_y -= text_image.size[1]/2
     position_actual = (int(center_x), int(center_y))
+    determine_overflow(electrode_pixel_size, image_size, max_len, n_lines)
 
     return position_actual, text_image
 
@@ -284,6 +261,21 @@ def rotate_point(x, y, theta):
     x_rot = x * np.cos(theta) - y * np.sin(theta)
     y_rot = x * np.sin(theta) + y * np.cos(theta)
     return x_rot, y_rot
+
+def determine_overflow(electrode_pixel_size, text_size, max_len, n_lines):
+    """
+    This functions determines whether the text will overflow at position (0, 0) and rotation 0°.
+    """
+    
+    # TODO put all the code inside of a class, and make the image size an attribute
+    # Add pixel size as a safety margin
+    img_size = 1500 - electrode_pixel_size, 1500 - electrode_pixel_size
+    if text_size[0] > img_size[0]:
+        recommended_size = np.floor(img_size[0] / (electrode_pixel_size * max_len))
+        warnings.warn(f"Your text may be too wide, we recommend using a letter size of at least: {recommended_size}")
+    if text_size[1] > img_size[1]:
+        recommended_size = np.floor(img_size[1] / (electrode_pixel_size * n_lines))
+        warnings.warn(f"Your text may be too large, we recommend using a letter size of at least: {recommended_size}")  
 
 def draw_grating(electrode_pixel_size, img_size, width_grating, pitch_grating, rotation, position_user):
     """
@@ -337,6 +329,36 @@ def draw_grating(electrode_pixel_size, img_size, width_grating, pitch_grating, r
     
     return grating_only
 
+def draw_rectangle(electrode_pixel_size, position_user, rotation, width, height):
+    
+    rectangle = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(rectangle)
+    draw.rectangle([0, 0, width, height], fill="white")
+
+    # Rotate with expansion of the image (i.e. no crop)
+    rectangle = rectangle.rotate(rotation, expand = 1)
+
+    # Compute the new position taking into account the offset required by the user, and the new size due to rotation expansion
+    width = rectangle.size[0]
+    height = rectangle.size[1]
+
+    # TODO make this a class and call find_center in the class constructor
+    center = find_center(electrode_pixel_size)
+    position_actual = convert_user_position_to_actual(electrode_pixel_size, center, position_user, width, height)
+    return position_actual, rectangle
+
+def draw_circle(electrode_pixel_size, position_user, diameter):
+
+    circle = Image.new("RGBA", (diameter, diameter), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(circle)
+    draw.ellipse([0, 0, diameter, diameter], fill="white")
+
+   # TODO make this a class and call find_center in the class constructor
+    center = find_center(electrode_pixel_size)
+    position_actual = convert_user_position_to_actual(electrode_pixel_size, center, position_user, diameter, diameter)
+    return position_actual, circle
+
+
 def draw_projected_overlay(electrode_pixel_size, type, args):
     """
     Returns two images,the actual projected image, and the projected image with the electrode pattern as background
@@ -362,9 +384,14 @@ def draw_projected_overlay(electrode_pixel_size, type, args):
     if type == "grating":
         to_be_projected = draw_grating(electrode_pixel_size, overlay.size, args[0], args[1], args[2], args[3])
         position_actual = (0, 0)
-    elif type == "letter":
-        position_actual, to_be_projected = draw_letter(electrode_pixel_size, args[0], args[1], args[2], args[3])
-        
+    elif type == "text":
+        if len(args[2]) == 0:
+            raise ValueError("No text was provided!") 
+        position_actual, to_be_projected = draw_text(electrode_pixel_size, args[0], args[1], args[2], args[3]) 
+    elif type=="rectangle":
+        position_actual, to_be_projected = draw_rectangle(electrode_pixel_size, args[0], args[1], args[2], args[3])
+    elif type=="circle":
+        position_actual, to_be_projected = draw_circle(electrode_pixel_size, args[0], args[1])
     else:
         raise NotImplementedError
     
