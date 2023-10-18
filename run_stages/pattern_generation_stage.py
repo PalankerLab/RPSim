@@ -1,15 +1,18 @@
 import pickle
+import matplotlib.pyplot as plt
 import numpy as np
 import os
 import warnings
-
+from copy import deepcopy
 
 from PIL import Image, ImageDraw, ImageFont
+
 
 from configuration.stages import RunStages
 from configuration.configuration_manager import Configuration
 
 from run_stages.common_run_stage import CommonRunStage
+from run_stages.pattern_generation_stage import ImagePattern
 
 class PatternGenerationStage(CommonRunStage):
     """
@@ -30,7 +33,92 @@ class PatternGenerationStage(CommonRunStage):
     def __init__(self, *args):
         super().__init__(*args)
 
-        self.electrode_size = None # To be added to the arguments
+        self.Images = []
+
+    def __str__(self):
+
+        return self.background_overlay.show(), self.projected.show()
+    
+    @property
+    def stage_name(self):
+        return RunStages.pattern_generation.name
+
+    def run_stages(self, *args, **kwargs):
+        
+        img_seq = Configuration().params["patterns_config"]
+        script = img_seq["script"]
+
+        list_images = []
+
+        for image_name in img_seq["list_image_names"]:
+            # Row for the script
+            row = []
+            list_subframes_bmp = []
+            list_subframes_array = []
+            img = img_seq[image_name]
+
+            # Add the name and number of repetitions to the script
+            row.append(image_name)
+            row.append(img.pop(0)[1])
+
+            # Iterate on the subframes
+            for subframe_name, time, list_patterns in img:
+                row.append(time)
+                drawing_board = ImagePattern(electrode_size=Configuration().params["pixel_size"])
+
+                # Iterate on the patterns
+                for pattern in list_patterns:
+                    pattern.draw(drawing_board)
+                # Store for bmp saving
+                list_subframes_bmp.append(drawing_board.save_as_PIL())
+                # Store as array for next stage
+                list_subframes_array(drawing_board.save_as_array())
+            
+            script.append(row)
+            # TODO figure out how to save to BMP images in input files, 
+            # and transfer the array for current sequence stage
+            list_images.append(list_subframes)
+
+
+
+    
+
+### New idea ###
+
+"""
+The class PatterGenerationStage contains only a list of Frames with their respectives subframes.
+The output is saved under input_files as Frame1, ..., FrameN with their subframes.
+Each subframe is an instance of a new class PatternImage (name to be determined) which contains
+all the functions currently defined for PatternGenerationStage
+
+The run() function of PatternGenerationStage iterates first on the list of Images provided 
+A second loop iterates on the subrames provided. Each subframe can contain several Pattern(),
+hence a third loop is required to iterate on the patterns.
+the instruction similar to those provided in CSV seq_time. The instruction could be forwarded to 
+CurrentSequenceStage, instead of parsing a csv as it is currently the case. But the BMP images
+should still be saved for the sake of verification
+
+"""
+
+class ImagePattern():
+    """
+    A class which stores and draws the PIL.Image containing the patterns to be projected and the patterns overlayed on the implant layout.
+
+    Attributes:
+        electrode_size (int): The electrode size in micron - More precisely the pitch between electrodes
+        implant_layout (PIL.Image): The image of the electrodes layout
+        electrode_label (Numpy.array): Array having the same size as implant_layout. Each entry corresponds to either 0 (no electrode at this pixel) or the electrode label (1 to max number).
+        
+        center_x, center_y (int, int): The pixels coordinate in implant_layout corresponding the center of the central hexagon
+        width, height (int, int): The size in pixels (and microns) of the implant_layout image
+        
+        backgroud_overlay (PIL.Image): The electrode pattern as background, and the projected image as overlay
+        projected (PIL.Image): A black screen as background, and the projected image as overlay
+    """
+
+    def __init__(self, electrode_size):
+
+        self.electrode_size = electrode_size
 
         self.implant_layout = self.load_file(f"Grid_PS{self.electrode_size}.png")
         self.electrode_label = self.load_file(f"pixel_label_PS{self.electrode_size}.pkl")
@@ -43,13 +131,34 @@ class PatternGenerationStage(CommonRunStage):
 
     def __str__(self):
 
-        return self.background_overlay.show(), self.projected.show()
+        self.background_overlay.show()
+        self.projected.show()
+        return "Printed the images!"
     
-    def run_stages(self, *args, **kwargs):
+    def show(self):
+        """
+        Displays the overlay and projected image as a subplot.
+        """
+        fig, axes = plt.subplots(1,2, figsize=(12, 20))
+        axes[0].imshow(np.array(self.background_overlay))
+        axes[0].set_title("Overlayed")
+        axes[1].imshow(np.array(self.projected))
+        axes[1].set_title("Projected")
+        plt.show()
+
+    def save_as_PIL(self):
+        """
+        TODO
+        """
+        return deepcopy(self.background_overlay), deepcopy(self.projected)
+    
+    def save_as_array(self):
+        """
+        TODO
+        """
+        return deepcopy(np.array(self.projected, dtype=float))
         
-        self.draw(**kwargs)
-        return self.background_overlay, self.projected
-    
+
     ############################ Helper functions ############################
    
     def load_file(self, file):
@@ -58,22 +167,26 @@ class PatternGenerationStage(CommonRunStage):
         Parameters:
             file (string): The name of the file to load, the rest of the path is assumed
         """
-        path = os.path.join(".." , "user_files", "user_input", "image_sequence", file) 
+        # TODO adjust path
+        #path = os.path.join(".." , "user_files", "user_input", "image_sequence", file) 
+        path = os.path.join("user_files", "user_input", "image_sequence", file)
         try:
             with open(path, 'rb') as f:
                 if "png" in file:
-                    file = Image.open(f, 'r')    
+                    file = Image.open(f, 'r')
+                    # Keep it in memory 
+                    file.load()    
                 elif "pkl" in file:
                     file = pickle.load(f)
                 else:
                     raise NotImplementedError     
         except OSError as error: 
             print(error) 
-            print(f"The file {file} could not be found with path: {path}") 
+            print(f"The file '{file}' could not be found with path: {path}") 
             
         return file
 
-    def rotate_point(x, y, theta):
+    def rotate_point(self, x, y, theta):
         """
         Rotates a point counterclockwise about the origin
             Parameters:
@@ -90,7 +203,6 @@ class PatternGenerationStage(CommonRunStage):
         This functions determines whether the text will overflow at position (0, 0) and rotation 0°.
         """
         
-        # TODO put all the code inside of a class, and make the image size an attribute
         # Add pixel size as a safety margin
         img_size = self.width - self.electrode_size, self.height - self.electrode_size
         if text_size[0] > img_size[0]:
@@ -159,12 +271,12 @@ class PatternGenerationStage(CommonRunStage):
                     central_label (int): the label of the central label
         """
         # Start by selecting the non-zero pixels (i.e. the photodiode)
-        filter_electrode = self.label != 0 
+        filter_electrode = self.electrode_label != 0 
         # Find the distance of the closest electrode (i.e. the smallest value in dist matrix which non-zero in selection)
         min_dist = np.min(dist_matrix[filter_electrode])
         # Select all the image pixels at that distance
         filter_distance = dist_matrix == min_dist
-        central_labels = self.label[filter_distance]
+        central_labels = self.electrode_label[filter_distance]
         # Only keep non-zero labels 
         central_labels = central_labels[central_labels != 0]
         # These are all the electrode pixels located at the same distance to the center, draw the first one
@@ -241,15 +353,15 @@ class PatternGenerationStage(CommonRunStage):
     
     ############################ Drawing functions ############################
 
-    def draw_text(self, letter_size, user_position, text, rotation):
+    def draw_text(self, user_position, rotation, text, letter_size):
         """
         The function computing the font size and position of the text. 
         
             Parameters:
-                letter_size (float): The letter's size as a multiple of the elec. pixel size
                 user_position ((float, float)): The position with respect to the central electrode as multiple of the elec. pixel size. Half electrode means going toward the diagonal
-                text (string): The text to be projected 
                 rotation (float): Clockwise rotation of the text in degrees
+                text (string): The text to be projected 
+                letter_size (float): The letter's size as a multiple of the elec. pixel size
             
             Return:
                 actual_position (int, int): The position to use when pasting the letter image into the projected/overlay image
@@ -279,28 +391,23 @@ class PatternGenerationStage(CommonRunStage):
         
         self.determine_overflow(image_size, max_len, n_lines)
 
-        return actual_position, text_image
+        return self.assemble_drawing(actual_position, text_image)
     
-    def draw_grating(self, width_grating, pitch_grating, rotation, user_position):
+    def draw_grating(self, user_position, rotation, width_grating, pitch_grating):
         """
         Draw a rectangular grating of width width_grating spaced (edge to edge) by pitch_grating
         WARNING: The user position only allows for lateral shift
 
             Parameters:
+                user_position (float, int): The position of the grating with respect to the central pixel, move with respect to the pixel size along the X-axis. Y-axis is not implemented yet.  
+                rotation (float): The clockwise rotation of the grating in degrees - Between -90° and 90° included
                 width_grating (int): The width of grating in micron
                 pitch_grating (int): The shorted distance separating each grating (edge to edge) 
-                rotation (float): The clockwise rotation of the grating in degrees - Between -90° and 90° included
-                user_position (float, int): The position of the grating with respect to the central pixel, move with respect to the pixel size along the X-axis. Y-axis is not implemented yet.  
-            
+                
             Returns:
                 grating_only (PIL.Image): The image of the grating with alpha transparency enabled
         """
         
-        if (np.abs(rotation) > 90):
-            raise ValueError("The rotation angle shoud be between -90° <= rotation <= 90°")
-        if user_position[1] != 0:
-            warnings.warn("The Y position cannot be shifted. Y is set to 0 instead.")
-
         theta = np.deg2rad(rotation)
 
         # We want the grating to overlap the central pixel, hence offset by half the grating rotated width
@@ -327,9 +434,11 @@ class PatternGenerationStage(CommonRunStage):
             # Draw rotated rectangle
             drawing_grating.polygon(points, fill="white", outline=None)
         
-        return grating_only
+        actual_position = (0, 0)
+
+        return self.assemble_drawing(actual_position, grating_only)
     
-    def draw_rectangle(self, user_position, rotation, width, height):
+    def draw_rectangle(self, user_position = (0, 0), rotation = 0, width = None, height = None, fill_color = "white"):
         """
         Draws a rectangle with the given size, at given position and rotation
             Parameters:
@@ -342,19 +451,26 @@ class PatternGenerationStage(CommonRunStage):
                 rectangle (PIL.Image): The image of the rectangle with alpha transparency enabled
         """
         
-        rectangle = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
+        # Use full field illumination if the dimensions are not specified
+        # Add electrode size due to the centering on electrode and not actual center!
+        if width is None:
+            width = self.width + self.electrode_size
+        if height is None:
+            height = self.height + self.electrode_size
+        
+        rectangle = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(rectangle)
-        draw.rectangle([0, 0, width, height], fill="white")
+        draw.rectangle([0, 0, width, height], fill=fill_color)
 
         # Rotate with expansion of the image (i.e. no crop)
         rectangle = rectangle.rotate(rotation, expand = 1)
 
-        # Compute the new position taking into account the offset required by the user, and the new size due to rotation expansion
+        # Update the size due after rotation due to the expansion
         width = rectangle.size[0]
         height = rectangle.size[1]
 
         actual_position = self.convert_user_position_to_actual(user_position, width, height)
-        return actual_position, rectangle
+        self.assemble_drawing(actual_position, rectangle)
 
     def draw_circle(self, user_position, diameter):
         """
@@ -372,30 +488,16 @@ class PatternGenerationStage(CommonRunStage):
         draw.ellipse([0, 0, diameter, diameter], fill="white")
 
         actual_position = self.convert_user_position_to_actual(user_position, diameter, diameter)
-        return actual_position, circle
+        self.assemble_drawing(actual_position, circle)
     
-    def draw(self, **kwargs):
+    def assemble_drawing(self, actual_position, to_be_projected):
         """
-        Call the lower-level functions for drawing the patterns on two images: the overlayed background and projected image  
+        This functions adds pattern to the image to be projected and overlayed background. 
             Parameters:
-                kwargs (misc): to be forwarded to the lower-level functions
+                actual_position (int, int): The position to use when pasting the rectangle image into the projected/overlay image
+                to_be_projected (PIL.Image): The pattern to be projected with alpha transparency enabled,
             
         """
-        
-        type = kwargs["type"]
-        if type == "text":
-            if len(kwargs["text"]) == 0:
-                raise ValueError("No text was provided!") 
-            actual_position, to_be_projected = self.draw_text(kwargs["letter_size"], kwargs["user_position"], kwargs["text"], kwargs["rotation"]) 
-        elif type == "grating":
-            to_be_projected = self.draw_grating(kwargs["width_grating"], kwargs["pitch_grating"], kwargs["rotation"], kwargs["user_position"])
-            actual_position = (0, 0)
-        elif type=="rectangle":
-            actual_position, to_be_projected = self.draw_rectangle(kwargs["user_position"], kwargs["rotation"], kwargs["width"], kwargs["height"])
-        elif type=="circle":
-            actual_position, to_be_projected = self.draw_circle(kwargs["user_position"], kwargs["diameter"])
-        else:
-            raise NotImplementedError
         
         # Create the final images
         self.background_overlay.paste(to_be_projected, actual_position, to_be_projected)
@@ -404,3 +506,127 @@ class PatternGenerationStage(CommonRunStage):
         # Add the red frame around the projected image
         drawing_projection = ImageDraw.Draw(self.projected)
         drawing_projection.rectangle([0, 0, self.width - 1, self.height - 1], outline="red", width=2)
+
+    
+
+class Pattern():
+    """
+    Superclass defining the basics of a pattern. 
+    Attributes:
+        user_position (float, float): The pattern's center with respect to the central pixel in the layout  
+        rotation (float): The clockwise rotation of the pattern in degrees
+    """
+    def __init__(self, user_postion = (0, 0), rotation = 0):
+        self.user_position = user_postion
+        self.rotation = rotation
+
+    def __str__(self):
+        pass
+
+    def draw(self, drawing_board):
+        pass
+
+class Text(Pattern):
+    """
+    Class defining the parameters for drawing a text. 
+    Attributes:
+        user_position ((float, float)): The position with respect to the central electrode as multiple of the elec. pixel size. Half electrode means going toward the diagonal
+        rotation (float): Clockwise rotation of the text in degrees
+        letter_size (float): The letter's size as a multiple of the elec. pixel size
+        text (string): The text to be projected 
+    """    
+    def __init__(self, user_position = (0, 0), rotation = 0, text = "C", letter_size = 5):
+        super().__init__(user_position, rotation)
+        self.letter_size = letter_size
+        self.text = text
+    
+    def __str__(self):
+        return f"User position: {self.user_position}\nRotation: {self.rotation}\nLetter size {self.letter_size}\nText {self.text}"
+
+    def draw(self, drawing_board):
+        drawing_board.draw_text(self.user_position, self.rotation, self.text, self.letter_size)
+
+class Grating(Pattern):
+    """
+    Class defining the parameters for drawing a grating. 
+    Attributes:
+        user_position (float, int): The position of the grating with respect to the central pixel, move with respect to the pixel size along the X-axis. Y-axis is not implemented yet.  
+        rotation (float): The clockwise rotation of the grating in degrees - Between -90° and 90° included        
+        width_grating (int): The width of grating in micron
+        pitch_grating (int): The shortest distance separating each grating (edge to edge) in micron
+    """ 
+    def __init__(self, user_position, rotation, width_grating, pitch_grating):
+        super().__init__(user_position, rotation)
+
+        if (np.abs(rotation) > 90):
+            raise ValueError("The rotation angle shoud be between -90° <= rotation <= 90°")
+        if user_position[1] != 0:
+            warnings.warn("The Y position cannot be shifted. Y is set to 0 instead.")
+
+        self.width_grating = width_grating
+        self.pitch_grating = pitch_grating
+    
+    def __str__(self):
+        return f"User position: {self.user_position}\nRotation: {self.rotation}\nWidth grating {self.width_grating}\nPitch grating {self.pitch_grating}"
+    
+    def draw(self, drawing_board):
+        drawing_board.draw_grating(self.user_position, self.rotation, self.width_grating, self.pitch_grating)
+    
+class Rectangle(Pattern):
+    """ 
+    Class defining the parameters for drawing a rectangle. 
+    Attributes:          
+        user_position (float, float): The position of the grating with respect to the central pixel  
+        rotation (float): The clockwise rotation of the rectangle
+        width (float): The rectangle's width in micron
+        height (float): The rectangle's height in micron
+    """    
+    def __init__(self, user_position, rotation, width, height):
+        super().__init__(user_position, rotation)
+        self.width = width
+        self.height = height
+    
+    def __str__(self):
+        return f"User position: {self.user_position}\nRotation: {self.rotation}\nWidth {self.width}\nHeight {self.height}"
+    
+    def draw(self, drawing_board):
+        drawing_board.draw_rectangle(self.user_position, self.rotation, self.width, self.height)
+    
+class Circle(Pattern):
+    """ 
+    Class defining the parameters for drawing a circle. 
+    Note that the rotation is not used for circles. 
+    Attributes:          
+        user_position (float, float): The position of the circle with respect to the central pixel
+        diameter (float): The circle diameter in micron
+    """  
+    def __init__(self, user_position, diameter):
+        super().__init__(user_position, rotation = 0)
+        self.diameter = diameter
+
+    def __str__(self):
+        return f"User position: {self.user_position}\nRotation: {self.rotation}\nDiameter {self.diameter}"
+    
+    def draw(self, drawing_board):
+        drawing_board.draw_circle(self.user_position, self.diameter)
+
+class FullField(Pattern):
+
+    """ 
+    Class defining an image covering the full field.
+    True: the image is completely white
+    False: the image is completly black
+
+    Note that the rotation is not used for circles. 
+    Attributes:  
+        fill_color (string): Either black for no activation, or white for field activation        
+    """  
+    def __init__(self, fill_color):
+        super().__init__()
+        self.color = fill_color
+
+    def __str__(self):
+        return f"Full field coverage"
+    
+    def draw(self, drawing_board):
+        drawing_board.draw_rectangle(fill_color = self.color)
