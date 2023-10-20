@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from datetime import datetime
 from distutils.dir_util import copy_tree
+from configuration.configuration_manager import Configuration
 
 import matplotlib.pyplot
 
@@ -84,6 +85,27 @@ class CommonUtils:
         :param file_name: the name of the file with the output data
         :return:
         """
+
+        # This is the output from PatternGenerationStage, it is more complicated to store 
+        # TODO Not very robust, could be improved   
+        if file_name is not None and "PIL_images.bmp" in file_name:
+            output_path = os.path.join(output_directory, Configuration().params["video_sequence_name"])
+            Path(os.path.dirname(output_path)).mkdir(parents=True, exist_ok=True)
+
+            for img_name, subframes in output.items():
+                # Create the path and folder with the image name
+                output_path = os.path.join(output_directory, Configuration().params["video_sequence_name"], img_name + "/")
+                Path(os.path.dirname(output_path)).mkdir(parents=True, exist_ok=True)
+
+                for subframe in subframes:
+                    # subframe is (str, (PIL, PIL)) - with the first image the overlay, second projected
+                    overlay_path = os.path.join(output_path, subframe[0] + "_overlay.bmp")
+                    projected_path = os.path.join(output_path, subframe[0] + ".bmp")
+                    subframe[1][0].save(overlay_path)
+                    subframe[1][1].save(projected_path)
+            
+            return 
+
         # if the output is a directory, just copy to output folder
         if isinstance(output, str) and os.path.isdir(output):
             copy_tree(output, output_directory)

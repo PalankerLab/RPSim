@@ -12,7 +12,6 @@ from configuration.stages import RunStages
 from configuration.configuration_manager import Configuration
 
 from run_stages.common_run_stage import CommonRunStage
-from run_stages.pattern_generation_stage import ImagePattern
 
 class PatternGenerationStage(CommonRunStage):
     """
@@ -33,54 +32,66 @@ class PatternGenerationStage(CommonRunStage):
     def __init__(self, *args):
         super().__init__(*args)
 
-        self.Images = []
-
-    def __str__(self):
-
-        return self.background_overlay.show(), self.projected.show()
+        self.list_subframes_as_ndarray = []
+        self.script = None
+        self.dict_PIL_images = {}
     
     @property
     def stage_name(self):
         return RunStages.pattern_generation.name
 
-    def run_stages(self, *args, **kwargs):
+    def run_stage(self, *args, **kwargs):
         
-        img_seq = Configuration().params["patterns_config"]
-        script = img_seq["script"]
+        """
+        The output for CurrentSequence stage will be stored through self.outputcontainer in CommonRunStage
+        I just have to return it at the end of the function.
+        The BMP images can be saved here, however, there is already a function in for this in CommmonRunStage
+        it's just no suited for our needs. 
+        """
+        if Configuration().params["generate_pattern"]:
 
-        list_images = []
+            img_seq = Configuration().params["patterns_config"]
+            self.script = img_seq["script"]
 
-        for image_name in img_seq["list_image_names"]:
-            # Row for the script
-            row = []
-            list_subframes_bmp = []
-            list_subframes_array = []
-            img = img_seq[image_name]
+            # List of list - each sublist corresponds to the subframes of a given image
 
-            # Add the name and number of repetitions to the script
-            row.append(image_name)
-            row.append(img.pop(0)[1])
+            path_input_folder = os.path.join(Configuration().params["user_input_path"], Configuration().params["video_sequence_name"])
+            if not os.path.exists(path_input_folder):
+                os.makedirs(path_input_folder)
 
-            # Iterate on the subframes
-            for subframe_name, time, list_patterns in img:
-                row.append(time)
-                drawing_board = ImagePattern(electrode_size=Configuration().params["pixel_size"])
+            for image_name in img_seq["list_image_names"]:
+                # Row for the script
+                row = []
+                list_tmp_bmp = []
+                list_tmp_array = []
 
-                # Iterate on the patterns
-                for pattern in list_patterns:
-                    pattern.draw(drawing_board)
-                # Store for bmp saving
-                list_subframes_bmp.append(drawing_board.save_as_PIL())
-                # Store as array for next stage
-                list_subframes_array(drawing_board.save_as_array())
+                # Add the name and number of repetitions to the script
+                img = img_seq[image_name]
+                row.append(image_name)
+                row.append(img.pop(0)[1])
+
+                # Iterate on the subframes
+                for subframe_name, time, list_patterns in img:
+                    
+                    drawing_board = ImagePattern(electrode_size=Configuration().params["pixel_size"])
+                    # Iterate on the patterns
+                    for pattern in list_patterns:
+                        pattern.draw(drawing_board)
+                
+                    # Subframe exposure time
+                    row.append(time)
+                    list_tmp_bmp.append((subframe_name, drawing_board.save_as_PIL()))
+                    list_tmp_array.append(drawing_board.save_as_array())
+                
+                self.script.append(row)
+                self.dict_PIL_images[image_name] = list_tmp_bmp
+                self.list_subframes_as_ndarray.append(list_tmp_array)
             
-            script.append(row)
-            # TODO figure out how to save to BMP images in input files, 
-            # and transfer the array for current sequence stage
-            list_images.append(list_subframes)
-
-
-
+            # TODO modifiy the saving function in run manager 
+            return [self.list_subframes_as_ndarray, self.script, self.dict_PIL_images]
+        else:
+            return []
+    
     
 
 ### New idea ###
