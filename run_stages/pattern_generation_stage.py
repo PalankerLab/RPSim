@@ -56,8 +56,8 @@ class PatternGenerationStage(CommonRunStage):
             # List of list - each sublist corresponds to the subframes of a given image
 
             path_input_folder = os.path.join(Configuration().params["user_input_path"], Configuration().params["video_sequence_name"])
-            if not os.path.exists(path_input_folder):
-                os.makedirs(path_input_folder)
+            #if not os.path.exists(path_input_folder):
+                #os.makedirs(path_input_folder)
 
             for image_name in img_seq["list_image_names"]:
                 # Row for the script
@@ -92,24 +92,6 @@ class PatternGenerationStage(CommonRunStage):
         else:
             return []
     
-    
-
-### New idea ###
-
-"""
-The class PatterGenerationStage contains only a list of Frames with their respectives subframes.
-The output is saved under input_files as Frame1, ..., FrameN with their subframes.
-Each subframe is an instance of a new class PatternImage (name to be determined) which contains
-all the functions currently defined for PatternGenerationStage
-
-The run() function of PatternGenerationStage iterates first on the list of Images provided 
-A second loop iterates on the subrames provided. Each subframe can contain several Pattern(),
-hence a third loop is required to iterate on the patterns.
-the instruction similar to those provided in CSV seq_time. The instruction could be forwarded to 
-CurrentSequenceStage, instead of parsing a csv as it is currently the case. But the BMP images
-should still be saved for the sake of verification
-
-"""
 
 class ImagePattern():
     """
@@ -566,7 +548,7 @@ class Grating(Pattern):
         width_grating (int): The width of grating in micron
         pitch_grating (int): The shortest distance separating each grating (edge to edge) in micron
     """ 
-    def __init__(self, user_position, rotation, width_grating, pitch_grating):
+    def __init__(self, user_position = (0, 0), rotation = 45, width_grating = 75, pitch_grating = 75):
         super().__init__(user_position, rotation)
 
         if (np.abs(rotation) > 90):
@@ -592,7 +574,7 @@ class Rectangle(Pattern):
         width (float): The rectangle's width in micron
         height (float): The rectangle's height in micron
     """    
-    def __init__(self, user_position, rotation, width, height):
+    def __init__(self, user_position = (0, 5), rotation = 45, width  = 100, height = 100):
         super().__init__(user_position, rotation)
         self.width = width
         self.height = height
@@ -611,7 +593,7 @@ class Circle(Pattern):
         user_position (float, float): The position of the circle with respect to the central pixel
         diameter (float): The circle diameter in micron
     """  
-    def __init__(self, user_position, diameter):
+    def __init__(self, user_position = (0, 0), diameter = 200):
         super().__init__(user_position, rotation = 0)
         self.diameter = diameter
 
@@ -628,11 +610,10 @@ class FullField(Pattern):
     True: the image is completely white
     False: the image is completly black
 
-    Note that the rotation is not used for circles. 
     Attributes:  
-        fill_color (string): Either black for no activation, or white for field activation        
+        fill_color (string): Either black for no activation, or white for full field activation        
     """  
-    def __init__(self, fill_color):
+    def __init__(self, fill_color = "black"):
         super().__init__()
         self.color = fill_color
 
@@ -641,3 +622,71 @@ class FullField(Pattern):
     
     def draw(self, drawing_board):
         drawing_board.draw_rectangle(fill_color = self.color)
+
+
+################## Classes for organizing the creation of GIF/video sequences ##################
+
+
+class Subframe():
+    """
+    A Subframe contains a list of patterns that is being displayed for a certain duration.
+
+    Attributes:
+        duration (float): Projection time in ms, it should be 0 < duration < ProjectionSequence.duration
+        patterns (list(ImagePattern)): List of patterns to diplay
+    """
+    def __init__(self, duration, patterns):
+
+        if (np.abs(duration) <= 0):
+            raise ValueError("The frame duration should be larger than 0 ms!")
+        if (len(patterns) == 0):
+            raise ValueError("No patterns were provided for the subframe!")
+        
+        self.duration = duration
+        self.patterns = patterns
+
+
+class Frame():
+    """
+    A Frame contains a list of subframes to be repeated a certain number of times.
+
+    Attributes:
+        repetitions (int): The number of times this frame is repeated in the GIF
+        subframes (list(Subframe)): The list of subframes to display
+        title (string): Optional, a meaningful name for the Frame
+    """
+
+    def __init__(self, repetitions, subframes, title="Default_title"):
+        
+        if (np.abs(repetitions) < 1):
+            raise ValueError("The frame repetition number should be at least 1!")
+        if (len(subframes) == 0):
+            raise ValueError("No subframes were provided for the Frame!")
+        
+        self.title = title
+        self.repetitions = repetitions
+        self.subframes = subframes
+
+
+class ProjectionSequence():
+    """
+    This class contains all the information required to create and save a GIF sequence
+
+    Attributes:
+        frames (list(Frame)): The frames to be displayed
+        intensity (float): The intensity of the light projected in mW / mm^2
+        frame_period (float): The frame period in ms. The reciprocal of the frame rate. Note that the sum of the subframes' duration should equal the frame period.
+        time_step (float): In ms, it is an artifact from previous implementation, it can probably discarded
+    """
+
+    def __init__(self, frames, intensity=1.0, frame_period=100, time_step=0.05):
+        if (len(frames) == 0):
+            raise ValueError("No frames were provided for the projection sequence!")
+        if (np.abs(intensity) <= 0):
+            raise ValueError("The laser intensity should be more than 0 mW / mm^2!")
+        if (np.abs(frame_period) <= 0):
+            raise ValueError("The frame duration should be more than 0 ms!")
+        self.frames = frames
+        self.intensity = intensity
+        self.duration = frame_period
+        self.time_step = 0.05

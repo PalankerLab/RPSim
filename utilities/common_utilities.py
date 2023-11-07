@@ -102,13 +102,6 @@ class CommonUtils:
                     projected_path = os.path.join(output_path, subframe[0] + ".bmp")
                     subframe[1][0].save(overlay_path)
                     subframe[1][1].save(projected_path)
-            
-            # For current sequence which is looking for the input folder
-            # Not robust, to be improved 
-#            input_path = os.path.join(Configuration().params["user_input_path"], "image_sequence",Configuration().params["video_sequence_name"])
-#            if not os.path.exists(input_path):
-#                os.makedirs(input_path)
-            
             return 
 
         # if the output is a directory, just copy to output folder
