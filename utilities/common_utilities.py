@@ -89,12 +89,11 @@ class CommonUtils:
         # This is the output from PatternGenerationStage, it is more complicated to store 
         # TODO Not very robust, could be improved   
         if file_name is not None and "PIL_images.bmp" in file_name:
-            output_path = os.path.join(output_directory, Configuration().params["video_sequence_name"])
-            Path(os.path.dirname(output_path)).mkdir(parents=True, exist_ok=True)
+            Path(os.path.dirname(output_directory)).mkdir(parents=True, exist_ok=True)
 
             for img_name, subframes in output.items():
                 # Create the path and folder with the image name
-                output_path = os.path.join(output_directory, Configuration().params["video_sequence_name"], img_name + "/")
+                output_path = os.path.join(output_directory, img_name + "/")
                 Path(os.path.dirname(output_path)).mkdir(parents=True, exist_ok=True)
 
                 for subframe in subframes:
@@ -106,16 +105,22 @@ class CommonUtils:
             
             # For current sequence which is looking for the input folder
             # Not robust, to be improved 
-            input_path = os.path.join(Configuration().params["user_input_path"], "image_sequence",Configuration().params["video_sequence_name"])
-            if not os.path.exists(input_path):
-                os.makedirs(input_path)
+#            input_path = os.path.join(Configuration().params["user_input_path"], "image_sequence",Configuration().params["video_sequence_name"])
+#            if not os.path.exists(input_path):
+#                os.makedirs(input_path)
             
             return 
 
         # if the output is a directory, just copy to output folder
         if isinstance(output, str) and os.path.isdir(output):
-            copy_tree(output, output_directory)
-            return
+            if output == output_directory:
+                # Special case when we generate the patterns
+                # The input folder does not exist as we are creating the data
+                # The input is in the output folder
+                return
+            else:
+                copy_tree(output, output_directory)
+                return
 
         # check if need to complete file name
         if not file_name and isinstance(output, matplotlib.pyplot.Figure):

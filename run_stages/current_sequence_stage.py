@@ -21,20 +21,23 @@ class CurrentSequenceStage(CommonRunStage):
 	def __init__(self, *args):
 		super().__init__(*args)
 
-		# If I add the automated input, there should be two options:
-		# - Use CurrentSequenceStage as is with Power Point inputs
-		# - Use the results from Pattern Generation Stage
-		# I guess a simple if clause around the video sequence, script and perhaps label
-		# And around the first for loop in run_stage
-
 		# initialize video sequence structure
 		self.video_sequence = {
 			"name": self.output_directory_name,
 			'pixel_size': Configuration().params["pixel_size"]
 		}
 
+		# Whether to look for generated patterns or pre-existing patterns
+		self.is_generated = Configuration().params["generate_pattern"]
+		
 		# define paths
-		self.image_sequence_input_folder = os.path.join(Configuration().params["user_input_path"], "image_sequence",self.output_directory_name)
+		if self.is_generated:
+			# If the patterns are generated, the source folder is in the output path
+			self.image_sequence_input_folder = self.output_directory
+		else:
+			# When loading existing patterns, the source folder is in the input path
+			self.image_sequence_input_folder = os.path.join(Configuration().params["user_input_path"], "image_sequence",self.output_directory_name)
+		
 		self.sequence_script_input_file = os.path.join(self.image_sequence_input_folder, "seq_time.csv")
 
 		# initialize gif params
@@ -63,18 +66,11 @@ class CurrentSequenceStage(CommonRunStage):
 		:return:
 		"""
 		
-		#if Configuration().params["generate_pattern"]:
-		#	self.run_stage_from_generated_patterns()
-		#else:
-		#	self.run_stage_from_manual_patterns()
-
-
-		#### Attempt 2 - several if else clauses but only one run function:
-		
-		is_generated = Configuration().params["generate_pattern"]
-		if is_generated:
-			list_images = self.outputs_container["pattern_generation"][0]
-		self._parse_script_file(is_generated)
+		self.is_generated = Configuration().params["generate_pattern"]
+		if self.is_generated:
+			#list_images = self.outputs_container["pattern_generation"][0]
+			list_images = self.outputs_container[RunStages.pattern_generation.name][0]
+		self._parse_script_file()
 
 		# duration of the frames in ms
 		for row in self.script:
@@ -92,12 +88,13 @@ class CurrentSequenceStage(CommonRunStage):
 			number_of_sub_frames = len(self.video_sequence['T_subframes'][frame_idx])
 			image_stack_temp = []
 
-			list_subframes = list_images[frame_idx]
+			if self.is_generated:
+				list_subframes = list_images[frame_idx]
 			
 			# Iterate on the subframes
 			for sub_frame_idx in range(number_of_sub_frames):
 
-				if is_generated:
+				if self.is_generated:
 					image =list_subframes[sub_frame_idx]
 				else:
 					sub_frame_image_path = os.path.join(Configuration().params["user_input_path"], 'image_sequence',
@@ -169,12 +166,12 @@ class CurrentSequenceStage(CommonRunStage):
 
 			self.gif_time = [x * 10 for x in self.gif_time]
 	
-	def _parse_script_file(self, is_generated):
+	def _parse_script_file(self):
 		"""
 		This function reads the sequence definition from the csv spec file, including time information and irradiance.
 		"""
-		if is_generated:
-			self.script = self.outputs_container["pattern_generation"][1]
+		if self.is_generated:
+			self.script = self.outputs_container[RunStages.pattern_generation.name][1]
 		else:
 			# open csv file with video sequence description
 			with open(self.sequence_script_input_file, 'r') as f:
@@ -192,6 +189,6 @@ class CurrentSequenceStage(CommonRunStage):
 		self.video_sequence['L_images'] = []
 		self.video_sequence['T_subframes'] = []
 		# Removes the row containing the column names (i.e. Frame 'Repetition', 'Subframe1', ..., 'SubframeN')
-		if not is_generated:
+		if not self.is_generated:
 			self.script = self.script[1:]
 
