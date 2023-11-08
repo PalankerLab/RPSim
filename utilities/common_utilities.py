@@ -111,9 +111,8 @@ class CommonUtils:
                 # The input folder does not exist as we are creating the data
                 # The input is in the output folder
                 return
-            else:
-                copy_tree(output, output_directory)
-                return
+            copy_tree(output, output_directory)
+            return
 
         # check if need to complete file name
         if not file_name and isinstance(output, matplotlib.pyplot.Figure):

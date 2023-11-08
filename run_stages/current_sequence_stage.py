@@ -95,7 +95,7 @@ class CurrentSequenceStage(CommonRunStage):
 			for sub_frame_idx in range(number_of_sub_frames):
 
 				if self.is_generated:
-					image =list_subframes[sub_frame_idx]
+					image = list_subframes[sub_frame_idx]
 				else:
 					sub_frame_image_path = os.path.join(Configuration().params["user_input_path"], 'image_sequence',
 														Configuration().params["video_sequence_name"],
@@ -103,7 +103,8 @@ class CurrentSequenceStage(CommonRunStage):
 														f'Subframe{sub_frame_idx + 1}.bmp')
 					image = plt.imread(sub_frame_image_path).astype(float)
 				
-				image = red_corners(image)
+				image = red_corners(image, image.shape[0])
+				#image = red_corners(image, 2000)
 
 				# fill in the photo-current of each pixel for each sub frame
 				light_on_pixels = img2pixel(image, self.image_label)
@@ -120,51 +121,6 @@ class CurrentSequenceStage(CommonRunStage):
 		self.gif_time = [x * 10 for x in self.gif_time]
 
 		return [self.video_sequence, {"gif_data": self.gif_image, "gif_time": self.gif_time}, self.image_sequence_input_folder]
-	
-	def run_stage_from_manual_patterns(self):
-			"""
-			This is the run_stage function from release 1.0 when the patterns where
-			drawn manually. The output is the same as run_stage_from_generated_patterns
-			"""
-			self._parse_script_file()
-
-			# duration of the frames in ms
-			for row in self.script:
-				self.video_sequence['L_images'].append(int(row[1]))
-				row_dat = [float(x) for x in row[2:] if x]
-
-				assert abs(sum(row_dat) - self.video_sequence['T_frame'])<1e-6, "Frames must be of the same length!"
-				self.video_sequence['T_subframes'].append(row_dat)
-
-			self.video_sequence['Frames'] = [deepcopy(self.video_sequence['T_subframes']) for _ in range(
-				self.number_of_pixels)]
-
-			for frame_idx in range(len(self.script)):
-				number_of_sub_frames = len(self.video_sequence['T_subframes'][frame_idx])
-				image_stack_temp = []
-
-				for sub_frame_idx in range(number_of_sub_frames):
-					# get current subframe
-					sub_frame_image_path = os.path.join(Configuration().params["user_input_path"], 'image_sequence',
-														Configuration().params["video_sequence_name"],
-														f'Frame{frame_idx + 1}',
-														f'Subframe{sub_frame_idx + 1}.bmp')
-					image = plt.imread(sub_frame_image_path).astype(float)
-					image = red_corners(image)
-
-					# fill in the photo-current of each pixel for each sub frame
-					light_on_pixels = img2pixel(image, self.image_label)
-					for pixel_idx in range(self.number_of_pixels):
-						self.video_sequence['Frames'][pixel_idx][frame_idx][sub_frame_idx] = light_on_pixels[
-							pixel_idx] * self.max_photo_current_in_ua
-
-					image_stack_temp.append(im.fromarray(np.uint8(image.round())))
-
-				number_of_repetitions = self.video_sequence['L_images'][frame_idx]
-				self.gif_image += image_stack_temp * number_of_repetitions
-				self.gif_time += self.video_sequence['T_subframes'][frame_idx] * number_of_repetitions
-
-			self.gif_time = [x * 10 for x in self.gif_time]
 	
 	def _parse_script_file(self):
 		"""

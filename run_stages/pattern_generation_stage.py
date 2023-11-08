@@ -50,47 +50,44 @@ class PatternGenerationStage(CommonRunStage):
         """
         if Configuration().params["generate_pattern"]:
 
-            img_seq = Configuration().params["patterns_config"]
-            self.script = img_seq["script"]
+            ### Object based implementation
+            
+            projection_sequence = Configuration().params["patterns_to_generate"]
+            self.script = projection_sequence.get_script()
 
-            # List of list - each sublist corresponds to the subframes of a given image
-
-            path_input_folder = os.path.join(Configuration().params["user_input_path"], Configuration().params["video_sequence_name"])
-            #if not os.path.exists(path_input_folder):
-                #os.makedirs(path_input_folder)
-
-            for image_name in img_seq["list_image_names"]:
-                # Row for the script
+            for frame in projection_sequence:
+                # Row containing the script information (compatible with previous implementation)
                 row = []
                 list_tmp_bmp = []
                 list_tmp_array = []
 
                 # Add the name and number of repetitions to the script
-                img = img_seq[image_name]
-                row.append(image_name)
-                row.append(img.pop(0)[1])
+                row.append(frame.name)
+                row.append(frame.repetitions)
 
-                # Iterate on the subframes
-                for subframe_name, time, list_patterns in img:
-                    
-                    drawing_board = ImagePattern(electrode_size=Configuration().params["pixel_size"])
-                    # Iterate on the patterns
-                    for pattern in list_patterns:
+                for idx, subframe in enumerate(frame):
+                    # Several patterns can be added to a drawing_board / subframe
+
+                    drawing_board = ImagePattern(electrode_size = Configuration().params["pixel_size"])
+                    for pattern in subframe:
+                        # Draw the provided pattern
                         pattern.draw(drawing_board)
-                
-                    # Subframe exposure time
-                    row.append(time)
-                    list_tmp_bmp.append((subframe_name, drawing_board.save_as_PIL()))
+
+                    # Save subframe
+                    row.append(subframe.duration)
+                    list_tmp_bmp.append((f'Subframe{int(idx+1)}', drawing_board.save_as_PIL()))
                     list_tmp_array.append(drawing_board.save_as_array())
                 
+                # Save frame
                 self.script.append(row)
-                self.dict_PIL_images[image_name] = list_tmp_bmp
+                self.dict_PIL_images[frame.name] = list_tmp_bmp
                 self.list_subframes_as_ndarray.append(list_tmp_array)
             
-            # TODO modifiy the saving function in run manager 
-            return [self.list_subframes_as_ndarray, self.script, self.dict_PIL_images]
+            # Current Sequence stage uses the ndarray frames and script, the PIL images are for the user only
+            return [self.list_subframes_as_ndarray, self.script, self.dict_PIL_images]                        
         else:
-            return []
+            # If we load pre-existing patterns, we do not need to process anything
+            return []  
     
 
 class ImagePattern():
@@ -113,14 +110,17 @@ class ImagePattern():
 
         self.electrode_size = electrode_size
 
-        self.implant_layout = self.load_file(f"Grid_PS{self.electrode_size}.png")
-        self.electrode_label = self.load_file(f"pixel_label_PS{self.electrode_size}.pkl")
+        suffix = Configuration().params["pixel_size_suffix"] # Whether we use the large file "_lg" or not
+        self.implant_layout = self.load_file(f"Grid_PS{self.electrode_size}{suffix}.png")
+        self.electrode_label = self.load_file(f"pixel_label_PS{self.electrode_size}{suffix}.pkl")
 
         self.center_x, self.center_y = self.find_center()
         self.width, self.height = self.implant_layout.size[0], self.implant_layout.size[1]
 
         self.background_overlay = self.implant_layout.copy()
         self.projected = Image.new("RGB", self.background_overlay.size, "black")
+        # TODO comment and explain why, or use a second parameter like 'self.corrected_electrode_size'
+        self.electrode_size = self.corrected_pixel_size()
 
     def __str__(self):
 
@@ -204,6 +204,21 @@ class ImagePattern():
         if text_size[1] > img_size[1]:
             recommended_size = np.floor(img_size[1] / (self.electrode_size * n_lines))
             warnings.warn(f"Your text may be too large, we recommend using a letter size of at least: {recommended_size}")  
+
+    def corrected_pixel_size(self):
+        """
+        TODO
+        """ 
+        # WARNING the assumption is that the implant_layout PNG image is scaled such that 1 pixel = micron,  
+        # - This seems true for all images except the large 100 prima
+        # - The PS100-lg was designed as a 2000 x 2000 pixels image and scaled down to 1500 x 1500 pixels
+        # - We need to apply a multiplication by 2000/1500 correction
+        # i.e. in the large format, 75 pixels in png corresponds to 100 um
+
+        if Configuration().params["pixel_size_suffix"] == "-lg":
+            return int( Configuration().params["pixel_size"] * 1500 / 2000 )
+        else:
+            return Configuration().params["pixel_size"]   
     
     ############################ Functions for computing position and sizes ############################
     
@@ -324,7 +339,9 @@ class ImagePattern():
         
         # Image fraction represents the proportion the text should take with respect to the image.
         # In this case, the letter size are multiples of the electrode pixel size. 
-        # WARNING the assumption is that the implant_layout PNG image is scaled such that 1 pixel = micron, which seems true after measuring the images in ImageJ
+        
+        # WARNING the assumption is that the implant_layout PNG image is scaled such that 1 pixel = micron,  
+
         img_fraction = self.electrode_size * letter_size / image_width 
 
         # Starting font size
@@ -577,7 +594,7 @@ class Rectangle(Pattern):
     def __init__(self, user_position = (0, 5), rotation = 45, width  = 100, height = 100):
         super().__init__(user_position, rotation)
         self.width = width
-        self.height = height
+        self.height = height # TODO add _um
     
     def __str__(self):
         return f"User position: {self.user_position}\nRotation: {self.rotation}\nWidth {self.width}\nHeight {self.height}"
@@ -642,8 +659,14 @@ class Subframe():
         if (len(patterns) == 0):
             raise ValueError("No patterns were provided for the subframe!")
         
-        self.duration = duration
+        self.duration = duration # TODO add _ms
         self.patterns = patterns
+
+    def __iter__(self):
+        """
+        Iterates over the patterns of the subframe
+        """
+        return iter(self.patterns)
 
 
 class Frame():
@@ -653,19 +676,25 @@ class Frame():
     Attributes:
         repetitions (int): The number of times this frame is repeated in the GIF
         subframes (list(Subframe)): The list of subframes to display
-        title (string): Optional, a meaningful name for the Frame
+        name (string): Optional, a meaningful name for the Frame
     """
 
-    def __init__(self, repetitions, subframes, title="Default_title"):
+    def __init__(self, repetitions, subframes, name="Default_title"):
         
         if (np.abs(repetitions) < 1):
             raise ValueError("The frame repetition number should be at least 1!")
         if (len(subframes) == 0):
             raise ValueError("No subframes were provided for the Frame!")
         
-        self.title = title
+        self.name = name
         self.repetitions = repetitions
         self.subframes = subframes
+
+    def __iter__(self):
+        """
+        Iterates over the subframes of the frame
+        """
+        return iter(self.subframes)
 
 
 class ProjectionSequence():
@@ -686,7 +715,39 @@ class ProjectionSequence():
             raise ValueError("The laser intensity should be more than 0 mW / mm^2!")
         if (np.abs(frame_period) <= 0):
             raise ValueError("The frame duration should be more than 0 ms!")
+        
         self.frames = frames
         self.intensity = intensity
-        self.duration = frame_period
+        self.frame_period = frame_period
         self.time_step = 0.05
+
+        self.check_duration()
+
+    def __iter__(self):
+        """
+        Iterates over the frames of the projection sequence
+        """
+        return iter(self.frames)
+    
+    def get_script(self):
+        """
+        Returns a script with similar structure to the one used with pre-existing patterns
+        """
+        script = [
+                    ["Light Intensity", self.intensity, "mW/mm^2"],
+                    ["Frame period", self.frame_period, "ms"],
+                    ["Time step", self.time_step, "ms"]
+                ]
+        return script
+    
+    def check_duration(self):
+        """
+        Checks whether the sum of subframe duration (exposure time) matches the frame period 
+        """
+        for frame in self.frames:
+            sum_duration = 0
+            for subframe in frame:
+                sum_duration += subframe.duration
+            
+            if sum_duration != self.frame_period:
+                raise ValueError(f"The sum of subframe duration ({sum_duration}) does not equal the frame period ({self.frame_period}) for frame '{frame.name}'!")
