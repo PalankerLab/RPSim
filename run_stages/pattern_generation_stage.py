@@ -20,7 +20,7 @@ class PatternGenerationStage(CommonRunStage):
     Attributes:
         electrode_size (int): The electrode size in micron - More precisely the pitch between electrodes
         implant_layout (PIL.Image): The image of the electrodes layout
-        electrode_label (Numpy.array): Array having the same size as implant_layout. Each entry corresponds to either 0 (no electrode at this pixel) or the electrode label (1 to max number).
+        electrode_labels (Numpy.array): Array having the same size as implant_layout. Each entry corresponds to either 0 (no electrode at this pixel) or the electrode label (1 to max number).
         
         center_x, center_y (int, int): The pixels coordinate in implant_layout corresponding the center of the central hexagon
         width, height (int, int): The size in pixels (and microns) of the implant_layout image
@@ -97,13 +97,16 @@ class ImagePattern():
     Attributes:
         electrode_size (int): The electrode size in micron - More precisely the pitch between electrodes
         implant_layout (PIL.Image): The image of the electrodes layout
-        electrode_label (Numpy.array): Array having the same size as implant_layout. Each entry corresponds to either 0 (no electrode at this pixel) or the electrode label (1 to max number).
+        electrode_labels (Numpy.array): Array having the same size as implant_layout. Each entry corresponds to either 0 (no electrode at this pixel) or the electrode label (1 to max number).
         
         center_x, center_y (int, int): The pixels coordinate in implant_layout corresponding the center of the central hexagon
         width, height (int, int): The size in pixels (and microns) of the implant_layout image
         
         backgroud_overlay (PIL.Image): The electrode pattern as background, and the projected image as overlay
         projected (PIL.Image): A black screen as background, and the projected image as overlay
+
+        pixel_scale (float): The scale in pixel/micron of the implant layout's PNG image
+        scaled_electrode (int): The size of the electrode in image-pixel 
     """
 
     def __init__(self, electrode_size):
@@ -112,15 +115,16 @@ class ImagePattern():
 
         suffix = Configuration().params["pixel_size_suffix"] # Whether we use the large file "_lg" or not
         self.implant_layout = self.load_file(f"Grid_PS{self.electrode_size}{suffix}.png")
-        self.electrode_label = self.load_file(f"pixel_label_PS{self.electrode_size}{suffix}.pkl")
+        self.electrode_labels = self.load_file(f"pixel_label_PS{self.electrode_size}{suffix}.pkl")
 
         self.center_x, self.center_y = self.find_center()
         self.width, self.height = self.implant_layout.size[0], self.implant_layout.size[1]
 
         self.background_overlay = self.implant_layout.copy()
         self.projected = Image.new("RGB", self.background_overlay.size, "black")
-        # TODO comment and explain why, or use a second parameter like 'self.corrected_electrode_size'
-        self.electrode_size = self.corrected_pixel_size()
+        
+        self.pixel_scale = self.find_image_scale()
+        self.scaled_electrode = int(self.electrode_size * self.pixel_scale)
 
     def __str__(self):
 
@@ -141,13 +145,13 @@ class ImagePattern():
 
     def save_as_PIL(self):
         """
-        TODO
+        Returns a deepcopy of the background overlay and projected PIL images
         """
         return deepcopy(self.background_overlay), deepcopy(self.projected)
     
     def save_as_array(self):
         """
-        TODO
+        Returns a deepcopy of the projected image as numpy float array
         """
         return deepcopy(np.array(self.projected, dtype=float))
         
@@ -197,28 +201,43 @@ class ImagePattern():
         """
         
         # Add pixel size as a safety margin
-        img_size = self.width - self.electrode_size, self.height - self.electrode_size
+        img_size = self.width - self.scaled_electrode, self.height - self.scaled_electrode
         if text_size[0] > img_size[0]:
-            recommended_size = np.floor(img_size[0] / (self.electrode_size * max_len))
+            recommended_size = np.floor(img_size[0] / (self.scaled_electrode * max_len))
             warnings.warn(f"Your text may be too wide, we recommend using a letter size of at least: {recommended_size}")
         if text_size[1] > img_size[1]:
-            recommended_size = np.floor(img_size[1] / (self.electrode_size * n_lines))
+            recommended_size = np.floor(img_size[1] / (self.scaled_electrode * n_lines))
             warnings.warn(f"Your text may be too large, we recommend using a letter size of at least: {recommended_size}")  
 
-    def corrected_pixel_size(self):
+    def find_image_scale(self):
         """
-        TODO
-        """ 
-        # WARNING the assumption is that the implant_layout PNG image is scaled such that 1 pixel = micron,  
-        # - This seems true for all images except the large 100 prima
-        # - The PS100-lg was designed as a 2000 x 2000 pixels image and scaled down to 1500 x 1500 pixels
-        # - We need to apply a multiplication by 2000/1500 correction
-        # i.e. in the large format, 75 pixels in png corresponds to 100 um
+        Determines the scale of the implant layout image.
+        Return:
+            - pixel_scale (float)
 
-        if Configuration().params["pixel_size_suffix"] == "-lg":
-            return int( Configuration().params["pixel_size"] * 1500 / 2000 )
+        Example with two different images:
+            - For Grid_PS100.png: 
+                - Distance in pixels between electrode center to center: 100
+                - Distance in microns: 100
+                - pixel_scale: 100/100 = 1 pixel/micron
+            - For Grid_PS100_lg.png
+                - Distance in pixels between electrode center to center: 75
+                - Distnace in microns: 100
+                - pixel_scale: 75/100 = 0.75 pixel/micron
+
+        Warning! This function assumes that electrode number 1 and 2 are next to each other!
+        TODO make the computation of the distance between two electrode more robust 
+        Note: I assumed that an error of 2 pixels between the actual and image distance is not significant. 
+        """ 
+
+        x1, y1 = self.find_center(1)
+        x2, y2 = self.find_center(2)
+        pitch_electrode_in_pixels = np.sqrt( (x1 - x2)**2 + (y1 - y2)**2)
+
+        if np.abs(pitch_electrode_in_pixels - self.electrode_size) > 2:
+            return pitch_electrode_in_pixels / self.electrode_size
         else:
-            return Configuration().params["pixel_size"]   
+            return 1 
     
     ############################ Functions for computing position and sizes ############################
     
@@ -241,11 +260,11 @@ class ImagePattern():
         # As the pattern is a honeycomb and not a grid, half pixel should be taken into account
         rounded_x = np.round(shift_x)
         if shift_x == rounded_x: # TODO do more test to check whether this calculation make sense
-            center_x += shift_x * self.electrode_size
+            center_x += shift_x * self.scaled_electrode
         else:
-            center_x += (rounded_x - np.sign(shift_x) * np.sin(np.pi * 30/180)) * self.electrode_size 
+            center_x += (rounded_x - np.sign(shift_x) * np.sin(np.pi * 30/180)) * self.scaled_electrode
         
-        center_y +=  shift_y * np.cos(np.pi * 30/180) * self.electrode_size
+        center_y +=  shift_y * np.cos(np.pi * 30/180) * self.scaled_electrode
         
         # Take into account the offset due to the object size, as PIL aligns 
         # from the top-left corner and not from the center of the object
@@ -263,7 +282,7 @@ class ImagePattern():
         """
 
         # Number of rows and columns
-        rows, columns = self.electrode_label.shape
+        rows, columns = self.electrode_labels.shape
         vertical_dist, horizontal_dist = np.mgrid[np.ceil(-columns/2):np.ceil(columns/2), np.ceil(-rows/2):np.ceil(rows/2)]
         dist_matrix = np.abs(vertical_dist) + np.abs(horizontal_dist)
 
@@ -279,12 +298,12 @@ class ImagePattern():
                     central_label (int): the label of the central label
         """
         # Start by selecting the non-zero pixels (i.e. the photodiode)
-        filter_electrode = self.electrode_label != 0 
+        filter_electrode = self.electrode_labels != 0 
         # Find the distance of the closest electrode (i.e. the smallest value in dist matrix which non-zero in selection)
         min_dist = np.min(dist_matrix[filter_electrode])
         # Select all the image pixels at that distance
         filter_distance = dist_matrix == min_dist
-        central_labels = self.electrode_label[filter_distance]
+        central_labels = self.electrode_labels[filter_distance]
         # Only keep non-zero labels 
         central_labels = central_labels[central_labels != 0]
         # These are all the electrode pixels located at the same distance to the center, draw the first one
@@ -292,20 +311,24 @@ class ImagePattern():
         # TODO check whether we can improve this criterion
         return central_labels[0]
     
-    def find_center(self):
+    def find_center(self, electrode_label = None):
         """
-        Finds the center of the central electrode for a certain electrode size pattern.
-
+        Finds the center of a given electrod within the pixel_label coordinate.
+            
+            Parameter:
+                electrode_label (int): The label of the electrode from which we want to determine the center            
             Return: 
                 center_x (int): The x coordinate corresponding to the center of the central electrode in the implant image 
                 center_y (int): The y coordinate corresponding to the center of the central electrode in the implant image 
         """
 
-        dist_matrix = self.create_distance_matrix()
-        central_label = self.determine_central_label(dist_matrix)
-
-        # Only keep the central electrode
-        filter_central_electrode = (self.electrode_label == central_label)
+        # if None, it means we are looking for the central electrode
+        if electrode_label is None:
+            dist_matrix = self.create_distance_matrix()
+            electrode_label = self.determine_central_label(dist_matrix)
+        
+        # Only keep the electrode of interest
+        filter_central_electrode = (self.electrode_labels == electrode_label)
 
         # Create an empty image, except for the central electrode
         hexagon_image = Image.fromarray(filter_central_electrode)
@@ -342,7 +365,7 @@ class ImagePattern():
         
         # WARNING the assumption is that the implant_layout PNG image is scaled such that 1 pixel = micron,  
 
-        img_fraction = self.electrode_size * letter_size / image_width 
+        img_fraction = self.scaled_electrode * letter_size / image_width 
 
         # Starting font size
         font_size = 1
@@ -382,7 +405,7 @@ class ImagePattern():
         lines = text.splitlines()
         n_lines = len(lines)
         max_len = len(max(lines, key=len))
-        image_size = (self.electrode_size * letter_size * max_len, self.electrode_size * letter_size * n_lines)
+        image_size = (self.scaled_electrode * letter_size * max_len, self.scaled_electrode * letter_size * n_lines)
         # Create a rnew image with a transparent background
         text_image = Image.new('RGBA', image_size, (0, 0, 0, 0))
 
@@ -421,7 +444,7 @@ class ImagePattern():
         theta = np.deg2rad(rotation)
 
         # We want the grating to overlap the central pixel, hence offset by half the grating rotated width
-        offset_x = int( np.cos(theta) * width_grating / 2 ) + user_position[0] * self.electrode_size
+        offset_x = int( np.cos(theta) * width_grating / 2 ) + user_position[0] * self.scaled_electrode
 
         # Compute the bottom left corner of the grating, from the image center to the right
         fwd_x_pos = np.arange(self.center_x - offset_x, 2 * self.width, width_grating + pitch_grating)
@@ -464,9 +487,9 @@ class ImagePattern():
         # Use full field illumination if the dimensions are not specified
         # Add electrode size due to the centering on electrode and not actual center!
         if width is None:
-            width = self.width + self.electrode_size
+            width = self.width + self.scaled_electrode
         if height is None:
-            height = self.height + self.electrode_size
+            height = self.height + self.scaled_electrode
         
         rectangle = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(rectangle)
@@ -495,8 +518,7 @@ class ImagePattern():
         
         circle = Image.new("RGBA", (diameter, diameter), (0, 0, 0, 0))
         draw = ImageDraw.Draw(circle)
-        draw.ellipse([0, 0, diameter, diameter], fill="white")
-
+        draw.ellipse([0, 0, diameter-1, diameter-1], fill="white")
         actual_position = self.convert_user_position_to_actual(user_position, diameter, diameter)
         self.assemble_drawing(actual_position, circle)
     
