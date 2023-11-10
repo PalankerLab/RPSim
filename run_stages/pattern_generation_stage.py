@@ -88,7 +88,10 @@ class PatternGenerationStage(CommonRunStage):
         else:
             # If we load pre-existing patterns, we do not need to process anything
             return []  
+
     
+#################### The class which actually does the drawing ####################
+
 
 class ImagePattern():
     """
@@ -204,10 +207,10 @@ class ImagePattern():
         img_size = self.width - self.scaled_electrode, self.height - self.scaled_electrode
         if text_size[0] > img_size[0]:
             recommended_size = np.floor(img_size[0] / (self.scaled_electrode * max_len))
-            warnings.warn(f"Your text may be too wide, we recommend using a letter size of at least: {recommended_size}")
+            warnings.warn(f"Your text may be too wide, we recommend using a maximum letter size of: {recommended_size}")
         if text_size[1] > img_size[1]:
             recommended_size = np.floor(img_size[1] / (self.scaled_electrode * n_lines))
-            warnings.warn(f"Your text may be too large, we recommend using a letter size of at least: {recommended_size}")  
+            warnings.warn(f"Your text may be too large, we recommend using a maximum letter size of: {recommended_size}")  
 
     def find_image_scale(self):
         """
@@ -226,7 +229,7 @@ class ImagePattern():
                 - pixel_scale: 75/100 = 0.75 pixel/micron
 
         Warning! This function assumes that electrode number 1 and 2 are next to each other!
-        TODO make the computation of the distance between two electrode more robust 
+        TODO make the computation of the electrode pitch more robust 
         Note: I assumed that an error of 2 pixels between the actual and image distance is not significant. 
         """ 
 
@@ -243,7 +246,8 @@ class ImagePattern():
     
     def convert_user_position_to_actual(self, user_position, width, height):
         """
-        Convert the user position to the actual position where the object should be located in the final image.
+        Convert the user position to the actual position where the object should be located in the final image,
+        taking into account the offset of the bouding box for correct centering.
             Parameters:
                 user_position ((float, float)): The position with respect to the central electrode as multiple of the electrode size. 1.5 along X, means going toward the electrode in diagonal
                 width (int): The width of the object to paste in the final image
@@ -342,31 +346,22 @@ class ImagePattern():
     
     def determine_font_size(self, letter_size):
         """
-        Determines the adequate font size such that a Landolt C span a certain
-        fraction of an electrode pixel. Currently the fraction is fixed to 1.
-        
-        Adapted from this post on Stackoverflow: https://stackoverflow.com/questions/4902198/pil-how-to-scale-text-size-in-relation-to-the-size-of-the-image 
-        It is brute force, and it could be imporved, but it works.  
-
+        Determines the font size corresponding to the desired letter size (in image pixels)
+     
             Params:
-                letter_size (float): The size of capital letter as a multiple of the pixel size
-
+                letter_size (float): The size of capital letter in image pixels
             Returns:
                 (ImageDraw.font): The preloaded font with the correct size  
+        
+        Adapted from this post on Stackoverflow: https://stackoverflow.com/questions/4902198/pil-how-to-scale-text-size-in-relation-to-the-size-of-the-image 
+        It is brute force search, but it works.
+
+        Note: All capital letters in the Sloan font have the same bouding box: a square 5 times the stroke's width. Here we use a capital C for calibration.
+
+        -> font.getlength returns the bounding box's length (in image pixel) of our Landolt C, 
+        as the bbox is square, we just need to make it as large as the desired letter_size (which is already in image pixel).    
         """    
-        
-        # All capital letters have the same size (or bounding box), and we want to calibrate the 
-        # font size according to capital letters. We don't want to calibrate on lower-case or punctuation characters. 
-        text = "C"
-        image_width = self.implant_layout.size[0]
-        
-        # Image fraction represents the proportion the text should take with respect to the image.
-        # In this case, the letter size are multiples of the electrode pixel size. 
-        
-        # WARNING the assumption is that the implant_layout PNG image is scaled such that 1 pixel = micron,  
-
-        img_fraction = self.scaled_electrode * letter_size / image_width 
-
+         
         # Starting font size
         font_size = 1
         font_name = "Sloan.otf"
@@ -377,7 +372,8 @@ class ImagePattern():
             print(error) 
             print(f"The font {font_name} could not be found with the path: {path}")
 
-        while font.getlength(text) < img_fraction * image_width:
+        text = "C"
+        while font.getlength(text) < letter_size:
             # Iterate until the text size is slightly larger than the criteria
             font_size += 1
             font = ImageFont.truetype(path, font_size)
@@ -386,26 +382,25 @@ class ImagePattern():
     
     ############################ Drawing functions ############################
 
-    def draw_text(self, user_position, rotation, text, letter_size):
+    def draw_text(self, pattern):
         """
-        The function computing the font size and position of the text. 
+        The function drawing the text at the correction location and font size. 
         
             Parameters:
-                user_position ((float, float)): The position with respect to the central electrode as multiple of the elec. pixel size. Half electrode means going toward the diagonal
-                rotation (float): Clockwise rotation of the text in degrees
-                text (string): The text to be projected 
-                letter_size (float): The letter's size as a multiple of the elec. pixel size
-            
+                pattern (ImagePattern.Text): Text to print
             Return:
                 actual_position (int, int): The position to use when pasting the letter image into the projected/overlay image
                 text_image (PIL.Image): An image of the letter on black background with the correct size and orientation
         """
         
+        # Convert sizes to image based pixel
+        letter_size = int(pattern.letter_size * (self.scaled_electrode if pattern.unit == "electrode" else self.pixel_scale))
+        
         # Determine image size
-        lines = text.splitlines()
+        lines = pattern.text.splitlines()
         n_lines = len(lines)
         max_len = len(max(lines, key=len))
-        image_size = (self.scaled_electrode * letter_size * max_len, self.scaled_electrode * letter_size * n_lines)
+        image_size = (np.ceil(letter_size * max_len).astype(int), np.ceil(letter_size * n_lines).astype(int))
         # Create a rnew image with a transparent background
         text_image = Image.new('RGBA', image_size, (0, 0, 0, 0))
 
@@ -413,38 +408,40 @@ class ImagePattern():
         text_drawing = ImageDraw.Draw(text_image)
         # Find the font size matching the electrode pixel size
         font = self.determine_font_size(letter_size)
-        text_drawing.text((0, 0), text, font=font, fill="white", align='center', spacing=0) # TODO check for the desired spacing, if non-zero, increase image_size height by spacing, eventually use ImageDraw.textbox() 
+        text_drawing.text((0, 0), pattern.text, font=font, fill="white", align='center', spacing=0) # TODO check for the desired vertical spacing, if non-zero, increase image_size height by spacing, eventually use ImageDraw.textbox() 
         
         # Rotate with expansion of the image (i.e. no crop)
-        text_image = text_image.rotate(rotation, expand = 1)
+        text_image = text_image.rotate(pattern.rotation, expand = 1)
 
         # Compute the new position taking into account the user position, the offset due to image size
         # and the new size due to rotation expansion
-        actual_position = self.convert_user_position_to_actual(user_position, text_image.size[0], text_image.size[1])
+        actual_position = self.convert_user_position_to_actual(pattern.user_position, text_image.size[0], text_image.size[1])
         
         self.determine_overflow(image_size, max_len, n_lines)
 
         return self.assemble_drawing(actual_position, text_image)
     
-    def draw_grating(self, user_position, rotation, width_grating, pitch_grating):
+    def draw_grating(self, pattern):
         """
         Draw a rectangular grating of width width_grating spaced (edge to edge) by pitch_grating
         WARNING: The user position only allows for lateral shift
 
             Parameters:
-                user_position (float, int): The position of the grating with respect to the central pixel, move with respect to the pixel size along the X-axis. Y-axis is not implemented yet.  
-                rotation (float): The clockwise rotation of the grating in degrees - Between -90° and 90° included
-                width_grating (int): The width of grating in micron
-                pitch_grating (int): The shorted distance separating each grating (edge to edge) 
+                pattern (ImagePattern.Grating): Grating to draw 
                 
             Returns:
                 grating_only (PIL.Image): The image of the grating with alpha transparency enabled
         """
         
-        theta = np.deg2rad(rotation)
+        # Convert distances to image based pixels
+        width_grating = int(pattern.width_grating * (self.scaled_electrode if pattern.unit == "electrode" else self.pixel_scale))
+        pitch_grating = int(pattern.pitch_grating * (self.scaled_electrode if pattern.unit == "electrode" else self.pixel_scale))
+   
+        
+        theta = np.deg2rad(pattern.rotation)
 
         # We want the grating to overlap the central pixel, hence offset by half the grating rotated width
-        offset_x = int( np.cos(theta) * width_grating / 2 ) + user_position[0] * self.scaled_electrode
+        offset_x = int( np.cos(theta) * width_grating / 2 ) + pattern.user_position[0] * self.scaled_electrode
 
         # Compute the bottom left corner of the grating, from the image center to the right
         fwd_x_pos = np.arange(self.center_x - offset_x, 2 * self.width, width_grating + pitch_grating)
@@ -471,55 +468,58 @@ class ImagePattern():
 
         return self.assemble_drawing(actual_position, grating_only)
     
-    def draw_rectangle(self, user_position = (0, 0), rotation = 0, width = None, height = None, fill_color = "white"):
+    def draw_rectangle(self, pattern, fill_color = "white"):
         """
         Draws a rectangle with the given size, at given position and rotation
             Parameters:
-                user_position (float, float): The position of the grating with respect to the central pixel  
-                rotation (float): The clockwise rotation of the rectangle
-                width (float): The rectangle's width in micron
-                height (float): The rectangle's height in micron
+                pattern (ImagePattern.Rectangle): The rectangle to draw
+                fill_color (string): The filling color
             Returns:
                 actual_position (int, int): The position to use when pasting the rectangle image into the projected/overlay image
                 rectangle (PIL.Image): The image of the rectangle with alpha transparency enabled
         """
         
-        # Use full field illumination if the dimensions are not specified
-        # Add electrode size due to the centering on electrode and not actual center!
-        if width is None:
-            width = self.width + self.scaled_electrode
-        if height is None:
-            height = self.height + self.scaled_electrode
+        if (pattern.width is None) or (pattern.height is None):
+            # If one dimension is None, we do full field illumination
+            # Add the electrode size to compensate the offset by the bounding box
+            # -> The rectangle is centered on the central electrode and not the center of the image
+            width = int(self.width + self.scaled_electrode)
+            height = int(self.height + self.scaled_electrode)
+        else:
+            # Convert distances to image based pixels
+            width = int(pattern.width * (self.scaled_electrode if pattern.unit == "electrode" else self.pixel_scale))
+            height = int(pattern.height * (self.scaled_electrode if pattern.unit == "electrode" else self.pixel_scale))
         
         rectangle = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(rectangle)
         draw.rectangle([0, 0, width, height], fill=fill_color)
 
         # Rotate with expansion of the image (i.e. no crop)
-        rectangle = rectangle.rotate(rotation, expand = 1)
+        rectangle = rectangle.rotate(pattern.rotation, expand = 1)
 
         # Update the size due after rotation due to the expansion
         width = rectangle.size[0]
         height = rectangle.size[1]
 
-        actual_position = self.convert_user_position_to_actual(user_position, width, height)
+        actual_position = self.convert_user_position_to_actual(pattern.user_position, width, height)
         self.assemble_drawing(actual_position, rectangle)
 
-    def draw_circle(self, user_position, diameter):
+    def draw_circle(self, pattern):
         """
         Draws a circle with the given diameter at given position
             Parameters:
-                user_position (float, float): The position of the grating with respect to the central pixel  
-                diameter (float): The circle diameter in micron
+                pattern (ImagePattern.Circle): Circle to draw
             Returns:
                 actual_position (int, int): The position to use when pasting the rectangle image into the projected/overlay image
                 rectangle (PIL.Image): The image of the rectangle with alpha transparency enabled
         """
+        # Convert distances to image based pixels
+        diameter = int(pattern.diameter * (self.scaled_electrode if pattern.unit == "electrode" else self.pixel_scale))
         
         circle = Image.new("RGBA", (diameter, diameter), (0, 0, 0, 0))
         draw = ImageDraw.Draw(circle)
         draw.ellipse([0, 0, diameter-1, diameter-1], fill="white")
-        actual_position = self.convert_user_position_to_actual(user_position, diameter, diameter)
+        actual_position = self.convert_user_position_to_actual(pattern.user_position, diameter, diameter)
         self.assemble_drawing(actual_position, circle)
     
     def assemble_drawing(self, actual_position, to_be_projected):
@@ -527,8 +527,7 @@ class ImagePattern():
         This functions adds pattern to the image to be projected and overlayed background. 
             Parameters:
                 actual_position (int, int): The position to use when pasting the rectangle image into the projected/overlay image
-                to_be_projected (PIL.Image): The pattern to be projected with alpha transparency enabled,
-            
+                to_be_projected (PIL.Image): The pattern to be projected with alpha transparency enabled, 
         """
         
         # Create the final images
@@ -539,7 +538,9 @@ class ImagePattern():
         drawing_projection = ImageDraw.Draw(self.projected)
         drawing_projection.rectangle([0, 0, self.width - 1, self.height - 1], outline="red", width=2)
 
-    
+
+########################### Classes for defining the patterns ###########################   
+
 
 class Pattern():
     """
@@ -547,16 +548,24 @@ class Pattern():
     Attributes:
         user_position (float, float): The pattern's center with respect to the central pixel in the layout  
         rotation (float): The clockwise rotation of the pattern in degrees
+        unit (float): Either 'electrode' or 'um'. Electrode for features which are multiples of the electrode size, or um for micrometers.      
     """
-    def __init__(self, user_postion = (0, 0), rotation = 0):
+    def __init__(self, user_postion = (0, 0), rotation = 0, unit = "electrode"):
         self.user_position = user_postion
         self.rotation = rotation
+        
+        if not isinstance(unit, str):
+            raise ValueError(f"The unit should be of a type str, and equal to 'um' or 'electrode', not '{unit}'.")
+        elif (unit != "electrode" and unit != "um"):
+            raise ValueError(f"The provided unit should be 'um' or 'electrode' and not '{unit}'.")
+        self.unit = unit
 
     def __str__(self):
         pass
 
     def draw(self, drawing_board):
         pass
+
 
 class Text(Pattern):
     """
@@ -564,31 +573,51 @@ class Text(Pattern):
     Attributes:
         user_position ((float, float)): The position with respect to the central electrode as multiple of the elec. pixel size. Half electrode means going toward the diagonal
         rotation (float): Clockwise rotation of the text in degrees
-        letter_size (float): The letter's size as a multiple of the elec. pixel size
+        unit (float): Either 'electrode' or 'um'. Electrode for features which are multiple of the electrode size, or um for micrometers.      
         text (string): The text to be projected 
+        letter_size (float): The letter's size as a multiple of the elec. pixel size
+        gap_size (float): When using Landolt C, the gap opening as a multiple of the pixel size
+
+        Note: if gap size is specified, it overwrites the provided letter size!
+        
+        The Sloan font (which contains the Landolt C) use a square bounding box for each letter.
+        The bbox is five times the width of the stroke (for the capital, I am not sure for the lower case). 
+        The Landolt C has a gap width the size of a stroke width.
+        
+        To have a Landolt C with 1-electrode (sometimes refered to as pixel here) opening:
+            -> as the gap width = stroke width
+            -> and the bbox is 5 times the stroke width
+            -> the letter size should be 5 times the gap size
+            -> the computation are done in image pixel through self.scaled_electrode or self.pixel_scale
     """    
-    def __init__(self, user_position = (0, 0), rotation = 0, text = "C", letter_size = 5):
-        super().__init__(user_position, rotation)
+    def __init__(self, user_position = (0, 0), rotation = 0, text = "C", unit = "electrode", letter_size = 5, gap_size = None):
+        super().__init__(user_position, rotation, unit)
         self.letter_size = letter_size
         self.text = text
+
+        # Gap opening overwrites letter size
+        if gap_size is not None:
+            self.letter_size = 5 * gap_size
     
     def __str__(self):
         return f"User position: {self.user_position}\nRotation: {self.rotation}\nLetter size {self.letter_size}\nText {self.text}"
 
     def draw(self, drawing_board):
-        drawing_board.draw_text(self.user_position, self.rotation, self.text, self.letter_size)
+        drawing_board.draw_text(self)
+
 
 class Grating(Pattern):
     """
     Class defining the parameters for drawing a grating. 
     Attributes:
         user_position (float, int): The position of the grating with respect to the central pixel, move with respect to the pixel size along the X-axis. Y-axis is not implemented yet.  
-        rotation (float): The clockwise rotation of the grating in degrees - Between -90° and 90° included        
+        rotation (float): The clockwise rotation of the grating in degrees - Between -90° and 90° included 
+        unit (float): Either 'electrode' or 'um'. Electrode for features which are multiple of the electrode size, or um for micrometers.      
         width_grating (int): The width of grating in micron
         pitch_grating (int): The shortest distance separating each grating (edge to edge) in micron
     """ 
-    def __init__(self, user_position = (0, 0), rotation = 45, width_grating = 75, pitch_grating = 75):
-        super().__init__(user_position, rotation)
+    def __init__(self, user_position = (0, 0), rotation = 45, unit = "electrode", width_grating = 1, pitch_grating = 1):
+        super().__init__(user_position, rotation, unit)
 
         if (np.abs(rotation) > 90):
             raise ValueError("The rotation angle shoud be between -90° <= rotation <= 90°")
@@ -602,28 +631,31 @@ class Grating(Pattern):
         return f"User position: {self.user_position}\nRotation: {self.rotation}\nWidth grating {self.width_grating}\nPitch grating {self.pitch_grating}"
     
     def draw(self, drawing_board):
-        drawing_board.draw_grating(self.user_position, self.rotation, self.width_grating, self.pitch_grating)
-    
+        drawing_board.draw_grating(self)
+
+
 class Rectangle(Pattern):
     """ 
     Class defining the parameters for drawing a rectangle. 
     Attributes:          
         user_position (float, float): The position of the grating with respect to the central pixel  
-        rotation (float): The clockwise rotation of the rectangle
+        rotation (float): The clockwise rotation of the rectangle in degrees
+        unit (float): Either 'electrode' or 'um'. Electrode for features which are multiple of the electrode size, or um for micrometers.      
         width (float): The rectangle's width in micron
         height (float): The rectangle's height in micron
     """    
-    def __init__(self, user_position = (0, 5), rotation = 45, width  = 100, height = 100):
-        super().__init__(user_position, rotation)
+    def __init__(self, user_position = (0, 5), rotation = 45, unit = "electrode", width  =  100, height = 100):
+        super().__init__(user_position, rotation, unit)
         self.width = width
-        self.height = height # TODO add _um
+        self.height = height 
     
     def __str__(self):
         return f"User position: {self.user_position}\nRotation: {self.rotation}\nWidth {self.width}\nHeight {self.height}"
     
     def draw(self, drawing_board):
-        drawing_board.draw_rectangle(self.user_position, self.rotation, self.width, self.height)
-    
+        drawing_board.draw_rectangle(self)
+
+
 class Circle(Pattern):
     """ 
     Class defining the parameters for drawing a circle. 
@@ -632,15 +664,16 @@ class Circle(Pattern):
         user_position (float, float): The position of the circle with respect to the central pixel
         diameter (float): The circle diameter in micron
     """  
-    def __init__(self, user_position = (0, 0), diameter = 200):
-        super().__init__(user_position, rotation = 0)
+    def __init__(self, user_position = (0, 0), unit="electrode", diameter = 200):
+        super().__init__(user_position, rotation = 0, unit=unit)
         self.diameter = diameter
 
     def __str__(self):
         return f"User position: {self.user_position}\nRotation: {self.rotation}\nDiameter {self.diameter}"
     
     def draw(self, drawing_board):
-        drawing_board.draw_circle(self.user_position, self.diameter)
+        drawing_board.draw_circle(self)
+
 
 class FullField(Pattern):
 
@@ -660,7 +693,7 @@ class FullField(Pattern):
         return f"Full field coverage"
     
     def draw(self, drawing_board):
-        drawing_board.draw_rectangle(fill_color = self.color)
+        drawing_board.draw_rectangle(Rectangle(height=None, width=None, rotation=0, user_position=(0,0)), fill_color = self.color)
 
 
 ################## Classes for organizing the creation of GIF/video sequences ##################
@@ -674,14 +707,14 @@ class Subframe():
         duration (float): Projection time in ms, it should be 0 < duration < ProjectionSequence.duration
         patterns (list(ImagePattern)): List of patterns to diplay
     """
-    def __init__(self, duration, patterns):
+    def __init__(self, duration_ms, patterns):
 
-        if (np.abs(duration) <= 0):
+        if (np.abs(duration_ms) <= 0):
             raise ValueError("The frame duration should be larger than 0 ms!")
         if (len(patterns) == 0):
             raise ValueError("No patterns were provided for the subframe!")
         
-        self.duration = duration # TODO add _ms
+        self.duration = duration_ms 
         self.patterns = patterns
 
     def __iter__(self):
@@ -726,21 +759,23 @@ class ProjectionSequence():
     Attributes:
         frames (list(Frame)): The frames to be displayed
         intensity (float): The intensity of the light projected in mW / mm^2
-        frame_period (float): The frame period in ms. The reciprocal of the frame rate. Note that the sum of the subframes' duration should equal the frame period.
+        frequency (float): The image frequency (or frame rate) in Hz. 
         time_step (float): In ms, it is an artifact from previous implementation, it can probably discarded
+
+        Note that the sum of the subframes' duration should equal the frame period (1 / frequency).
     """
 
-    def __init__(self, frames, intensity=1.0, frame_period=100, time_step=0.05):
+    def __init__(self, frames, intensity=1.0, frequency=10, time_step=0.05):
         if (len(frames) == 0):
             raise ValueError("No frames were provided for the projection sequence!")
         if (np.abs(intensity) <= 0):
             raise ValueError("The laser intensity should be more than 0 mW / mm^2!")
-        if (np.abs(frame_period) <= 0):
+        if (np.abs(frequency) <= 0):
             raise ValueError("The frame duration should be more than 0 ms!")
         
         self.frames = frames
         self.intensity = intensity
-        self.frame_period = frame_period
+        self.frame_period = (1 / frequency)*1000 # in ms
         self.time_step = 0.05
 
         self.check_duration()
