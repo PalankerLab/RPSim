@@ -18,14 +18,14 @@ class PatternGenerationStage(CommonRunStage):
     This class implements the automated pattern generation from a configuration file.
 
     Attributes:
-        electrode_size (int): The electrode size in micron - More precisely the pitch between electrodes
-        implant_layout (PIL.Image): The image of the electrodes layout
-        electrode_labels (Numpy.array): Array having the same size as implant_layout. Each entry corresponds to either 0 (no electrode at this pixel) or the electrode label (1 to max number).
+        pixel_size (int): The pixel size in micron (we refer to pixel as the hexagonal unit with photodiode, active and return electrode)
+        implant_layout (PIL.Image): The image of the pixel layout
+        pixel_labels (Numpy.array): Array having the same size as implant_layout. Each entry corresponds to either 0 or the pixel label (the active and return electrodes are also labeled 0, only the photodiode is non-zero)
         
         center_x, center_y (int, int): The pixels coordinate in implant_layout corresponding the center of the central hexagon
         width, height (int, int): The size in pixels (and microns) of the implant_layout image
         
-        backgroud_overlay (PIL.Image): The electrode pattern as background, and the projected image as overlay
+        backgroud_overlay (PIL.Image): The pixel pattern as background, and the projected image as overlay
         projected (PIL.Image): A black screen as background, and the projected image as overlay
     """
 
@@ -68,7 +68,7 @@ class PatternGenerationStage(CommonRunStage):
                 for idx, subframe in enumerate(frame):
                     # Several patterns can be added to a drawing_board / subframe
 
-                    drawing_board = ImagePattern(electrode_size = Configuration().params["pixel_size"])
+                    drawing_board = ImagePattern(pixel_size = Configuration().params["pixel_size"])
                     for pattern in subframe:
                         # Draw the provided pattern
                         pattern.draw(drawing_board)
@@ -89,8 +89,8 @@ class PatternGenerationStage(CommonRunStage):
             # If we load pre-existing patterns, we do not need to process anything
             return []  
 
-    
-#################### The class which actually does the drawing ####################
+
+#################### The class which actually handles the drawing ####################
 
 
 class ImagePattern():
@@ -98,27 +98,27 @@ class ImagePattern():
     A class which stores and draws the PIL.Image containing the patterns to be projected and the patterns overlayed on the implant layout.
 
     Attributes:
-        electrode_size (int): The electrode size in micron - More precisely the pitch between electrodes
-        implant_layout (PIL.Image): The image of the electrodes layout
-        electrode_labels (Numpy.array): Array having the same size as implant_layout. Each entry corresponds to either 0 (no electrode at this pixel) or the electrode label (1 to max number).
+        pixel_size (int): The pixel size in micron - More precisely the pitch between pixels
+        implant_layout (PIL.Image): The image of the pixcel layout
+        pixel_labels (Numpy.array): Array having the same size as implant_layout. Each entry corresponds to either 0 or the pixel label (the active and return electrodes are also labeled 0, only the photodiode is non-zero)
         
-        center_x, center_y (int, int): The pixels coordinate in implant_layout corresponding the center of the central hexagon
-        width, height (int, int): The size in pixels (and microns) of the implant_layout image
+        center_x, center_y (int, int): The iamge pixels coordinate in implant_layout corresponding the center of the central hexagon
+        width, height (int, int): The size in image pixels (and microns) of the implant_layout image
         
-        backgroud_overlay (PIL.Image): The electrode pattern as background, and the projected image as overlay
+        backgroud_overlay (PIL.Image): The pixel pattern as background, and the projected image as overlay
         projected (PIL.Image): A black screen as background, and the projected image as overlay
 
-        pixel_scale (float): The scale in pixel/micron of the implant layout's PNG image
-        scaled_electrode (int): The size of the electrode in image-pixel 
+        image_pixel_scale (float): The scale in pixel/micron of the implant layout's PNG image
+        scaled_pixel (int): The size of the pixel in image-pixel 
     """
 
-    def __init__(self, electrode_size):
+    def __init__(self, pixel_size):
 
-        self.electrode_size = electrode_size
+        self.pixel_size = pixel_size
 
         suffix = Configuration().params["pixel_size_suffix"] # Whether we use the large file "_lg" or not
-        self.implant_layout = self.load_file(f"Grid_PS{self.electrode_size}{suffix}.png")
-        self.electrode_labels = self.load_file(f"pixel_label_PS{self.electrode_size}{suffix}.pkl")
+        self.implant_layout = self.load_file(f"Grid_PS{self.pixel_size}{suffix}.png")
+        self.pixel_labels = self.load_file(f"pixel_label_PS{self.pixel_size}{suffix}.pkl")
 
         self.center_x, self.center_y = self.find_center()
         self.width, self.height = self.implant_layout.size[0], self.implant_layout.size[1]
@@ -126,8 +126,8 @@ class ImagePattern():
         self.background_overlay = self.implant_layout.copy()
         self.projected = Image.new("RGB", self.background_overlay.size, "black")
         
-        self.pixel_scale = self.find_image_scale()
-        self.scaled_electrode = int(self.electrode_size * self.pixel_scale)
+        self.image_pixel_scale = self.find_image_scale()
+        self.scaled_pixel = int(self.pixel_size * self.image_pixel_scale)
 
     def __str__(self):
 
@@ -204,41 +204,41 @@ class ImagePattern():
         """
         
         # Add pixel size as a safety margin
-        img_size = self.width - self.scaled_electrode, self.height - self.scaled_electrode
+        img_size = self.width - self.scaled_pixel, self.height - self.scaled_pixel
         if text_size[0] > img_size[0]:
-            recommended_size = np.floor(img_size[0] / (self.scaled_electrode * max_len))
+            recommended_size = np.floor(img_size[0] / (self.scaled_pixel * max_len))
             warnings.warn(f"Your text may be too wide, we recommend using a maximum letter size of: {recommended_size}")
         if text_size[1] > img_size[1]:
-            recommended_size = np.floor(img_size[1] / (self.scaled_electrode * n_lines))
+            recommended_size = np.floor(img_size[1] / (self.scaled_pixel * n_lines))
             warnings.warn(f"Your text may be too large, we recommend using a maximum letter size of: {recommended_size}")  
 
     def find_image_scale(self):
         """
         Determines the scale of the implant layout image.
         Return:
-            - pixel_scale (float)
+            - image_pixel_scale (float)
 
         Example with two different images:
             - For Grid_PS100.png: 
-                - Distance in pixels between electrode center to center: 100
+                - Distance in image pixels between pixel center to center: 100
                 - Distance in microns: 100
-                - pixel_scale: 100/100 = 1 pixel/micron
+                - image_pixel_scale: 100/100 = 1 pixel/micron
             - For Grid_PS100_lg.png
-                - Distance in pixels between electrode center to center: 75
+                - Distance in image pixels between pixel center to center: 75
                 - Distnace in microns: 100
-                - pixel_scale: 75/100 = 0.75 pixel/micron
+                - image_pixel_scale: 75/100 = 0.75 pixel/micron
 
-        Warning! This function assumes that electrode number 1 and 2 are next to each other!
-        TODO make the computation of the electrode pitch more robust 
-        Note: I assumed that an error of 2 pixels between the actual and image distance is not significant. 
+        Warning! This function assumes that pixel number 1 and 2 are next to each other!
+        TODO make the computation of the pixel pitch more robust 
+        Note: I assumed that an error of 2 image pixels between the actual and image distance is not significant. 
         """ 
 
         x1, y1 = self.find_center(1)
         x2, y2 = self.find_center(2)
-        pitch_electrode_in_pixels = np.sqrt( (x1 - x2)**2 + (y1 - y2)**2)
+        pitch_pixel_in_image_pixels = np.sqrt( (x1 - x2)**2 + (y1 - y2)**2)
 
-        if np.abs(pitch_electrode_in_pixels - self.electrode_size) > 2:
-            return pitch_electrode_in_pixels / self.electrode_size
+        if np.abs(pitch_pixel_in_image_pixels - self.pixel_size) > 2:
+            return pitch_pixel_in_image_pixels / self.pixel_size
         else:
             return 1 
     
@@ -249,7 +249,7 @@ class ImagePattern():
         Convert the user position to the actual position where the object should be located in the final image,
         taking into account the offset of the bouding box for correct centering.
             Parameters:
-                user_position ((float, float)): The position with respect to the central electrode as multiple of the electrode size. 1.5 along X, means going toward the electrode in diagonal
+                user_position ((float, float)): The position with respect to the central  as multiple of the pixel size. 1.5 along X, means going toward the pixel in diagonal
                 width (int): The width of the object to paste in the final image
                 height (int): The height of the object to paste in the final image
 
@@ -264,11 +264,11 @@ class ImagePattern():
         # As the pattern is a honeycomb and not a grid, half pixel should be taken into account
         rounded_x = np.round(shift_x)
         if shift_x == rounded_x: # TODO do more test to check whether this calculation make sense
-            center_x += shift_x * self.scaled_electrode
+            center_x += shift_x * self.scaled_pixel
         else:
-            center_x += (rounded_x - np.sign(shift_x) * np.sin(np.pi * 30/180)) * self.scaled_electrode
+            center_x += (rounded_x - np.sign(shift_x) * np.sin(np.pi * 30/180)) * self.scaled_pixel
         
-        center_y +=  shift_y * np.cos(np.pi * 30/180) * self.scaled_electrode
+        center_y +=  shift_y * np.cos(np.pi * 30/180) * self.scaled_pixel
         
         # Take into account the offset due to the object size, as PIL aligns 
         # from the top-left corner and not from the center of the object
@@ -276,7 +276,7 @@ class ImagePattern():
         
     def create_distance_matrix(self):
         """
-        Returns a distance matrix (Manhattan distance) from the center of the label file for a given electrode size.
+        Returns a distance matrix (Manhattan distance) from the center of the label file for a given pixel size.
         If the number of columns is even, the 0 will be centered to the right
             (e.g. for 4 columns the distance is [-2, -1, 0, 1])
         Same principle for an even number of rows, the zero will be centered towards the bottom
@@ -286,7 +286,7 @@ class ImagePattern():
         """
 
         # Number of rows and columns
-        rows, columns = self.electrode_labels.shape
+        rows, columns = self.pixel_labels.shape
         vertical_dist, horizontal_dist = np.mgrid[np.ceil(-columns/2):np.ceil(columns/2), np.ceil(-rows/2):np.ceil(rows/2)]
         dist_matrix = np.abs(vertical_dist) + np.abs(horizontal_dist)
 
@@ -294,7 +294,7 @@ class ImagePattern():
     
     def determine_central_label(self, dist_matrix):
         """
-            Return the label of the central electrode, which is later used to determine the center of the central electdoe.
+            Return the label of the central pixel, which is later used to determine the center of the central electdoe.
                 Parameters:
                     dist_matrix (Numpy.array): same shape as label, where each matrix entry is the Manhattan distance to the center
 
@@ -302,40 +302,40 @@ class ImagePattern():
                     central_label (int): the label of the central label
         """
         # Start by selecting the non-zero pixels (i.e. the photodiode)
-        filter_electrode = self.electrode_labels != 0 
-        # Find the distance of the closest electrode (i.e. the smallest value in dist matrix which non-zero in selection)
-        min_dist = np.min(dist_matrix[filter_electrode])
-        # Select all the image pixels at that distance
+        filter_pixel = self.pixel_labels != 0 
+        # Find the distance of the closest pixel (i.e. the smallest value in dist matrix which non-zero in selection)
+        min_dist = np.min(dist_matrix[filter_pixel])
+        # Select all the pixels at that distance
         filter_distance = dist_matrix == min_dist
-        central_labels = self.electrode_labels[filter_distance]
+        central_labels = self.pixel_labels[filter_distance]
         # Only keep non-zero labels 
         central_labels = central_labels[central_labels != 0]
-        # These are all the electrode pixels located at the same distance to the center, draw the first one
+        # These are all the pixels located at the same distance to the center, draw the first one
         
         # TODO check whether we can improve this criterion
         return central_labels[0]
     
-    def find_center(self, electrode_label = None):
+    def find_center(self, pixel_label = None):
         """
         Finds the center of a given electrod within the pixel_label coordinate.
             
             Parameter:
-                electrode_label (int): The label of the electrode from which we want to determine the center            
+                pixel_label (int): The label of the pixel from which we want to determine the center            
             Return: 
-                center_x (int): The x coordinate corresponding to the center of the central electrode in the implant image 
-                center_y (int): The y coordinate corresponding to the center of the central electrode in the implant image 
+                center_x (int): The x coordinate corresponding to the center of the central pixel in the implant image 
+                center_y (int): The y coordinate corresponding to the center of the central pixel in the implant image 
         """
 
-        # if None, it means we are looking for the central electrode
-        if electrode_label is None:
+        # if None, it means we are looking for the central pixel
+        if pixel_label is None:
             dist_matrix = self.create_distance_matrix()
-            electrode_label = self.determine_central_label(dist_matrix)
+            pixel_label = self.determine_central_label(dist_matrix)
         
-        # Only keep the electrode of interest
-        filter_central_electrode = (self.electrode_labels == electrode_label)
+        # Only keep the pixel of interest
+        filter_central_pixel = (self.pixel_labels == pixel_label)
 
-        # Create an empty image, except for the central electrode
-        hexagon_image = Image.fromarray(filter_central_electrode)
+        # Create an empty image, except for the central pixel
+        hexagon_image = Image.fromarray(filter_central_pixel)
         # Find the bounding box
         bbox = hexagon_image.getbbox()
         # Calculate the center coordinates - the middle between the top corners and middle betwen top and bottom corner
@@ -384,7 +384,7 @@ class ImagePattern():
 
     def draw_text(self, pattern):
         """
-        The function drawing the text at the correction location and font size. 
+        The function drawing text at the correct location and font size. 
         
             Parameters:
                 pattern (ImagePattern.Text): Text to print
@@ -394,7 +394,7 @@ class ImagePattern():
         """
         
         # Convert sizes to image based pixel
-        letter_size = int(pattern.letter_size * (self.scaled_electrode if pattern.unit == "electrode" else self.pixel_scale))
+        letter_size = int(pattern.letter_size * (self.scaled_pixel if pattern.unit == "pixel" else self.image_pixel_scale))
         
         # Determine image size
         lines = pattern.text.splitlines()
@@ -406,7 +406,7 @@ class ImagePattern():
 
         # Convert to drawing, set the font, and write text
         text_drawing = ImageDraw.Draw(text_image)
-        # Find the font size matching the electrode pixel size
+        # Find the font size matching the letter size
         font = self.determine_font_size(letter_size)
         text_drawing.text((0, 0), pattern.text, font=font, fill="white", align='center', spacing=0) # TODO check for the desired vertical spacing, if non-zero, increase image_size height by spacing, eventually use ImageDraw.textbox() 
         
@@ -434,14 +434,14 @@ class ImagePattern():
         """
         
         # Convert distances to image based pixels
-        width_grating = int(pattern.width_grating * (self.scaled_electrode if pattern.unit == "electrode" else self.pixel_scale))
-        pitch_grating = int(pattern.pitch_grating * (self.scaled_electrode if pattern.unit == "electrode" else self.pixel_scale))
+        width_grating = int(pattern.width_grating * (self.scaled_pixel if pattern.unit == "pixel" else self.image_pixel_scale))
+        pitch_grating = int(pattern.pitch_grating * (self.scaled_pixel if pattern.unit == "pixel" else self.image_pixel_scale))
    
         
         theta = np.deg2rad(pattern.rotation)
 
         # We want the grating to overlap the central pixel, hence offset by half the grating rotated width
-        offset_x = int( np.cos(theta) * width_grating / 2 ) + pattern.user_position[0] * self.scaled_electrode
+        offset_x = int( np.cos(theta) * width_grating / 2 ) + pattern.user_position[0] * self.scaled_pixel
 
         # Compute the bottom left corner of the grating, from the image center to the right
         fwd_x_pos = np.arange(self.center_x - offset_x, 2 * self.width, width_grating + pitch_grating)
@@ -481,14 +481,14 @@ class ImagePattern():
         
         if (pattern.width is None) or (pattern.height is None):
             # If one dimension is None, we do full field illumination
-            # Add the electrode size to compensate the offset by the bounding box
-            # -> The rectangle is centered on the central electrode and not the center of the image
-            width = int(self.width + self.scaled_electrode)
-            height = int(self.height + self.scaled_electrode)
+            # Add the pixel size to compensate the offset by the bounding box
+            # -> The rectangle is centered on the central pixel and not the center of the image
+            width = int(self.width + self.scaled_pixel)
+            height = int(self.height + self.scaled_pixel)
         else:
             # Convert distances to image based pixels
-            width = int(pattern.width * (self.scaled_electrode if pattern.unit == "electrode" else self.pixel_scale))
-            height = int(pattern.height * (self.scaled_electrode if pattern.unit == "electrode" else self.pixel_scale))
+            width = int(pattern.width * (self.scaled_pixel if pattern.unit == "pixel" else self.image_pixel_scale))
+            height = int(pattern.height * (self.scaled_pixel if pattern.unit == "pixel" else self.image_pixel_scale))
         
         rectangle = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(rectangle)
@@ -514,7 +514,7 @@ class ImagePattern():
                 rectangle (PIL.Image): The image of the rectangle with alpha transparency enabled
         """
         # Convert distances to image based pixels
-        diameter = int(pattern.diameter * (self.scaled_electrode if pattern.unit == "electrode" else self.pixel_scale))
+        diameter = int(pattern.diameter * (self.scaled_pixel if pattern.unit == "pixel" else self.image_pixel_scale))
         
         circle = Image.new("RGBA", (diameter, diameter), (0, 0, 0, 0))
         draw = ImageDraw.Draw(circle)
@@ -524,7 +524,7 @@ class ImagePattern():
     
     def assemble_drawing(self, actual_position, to_be_projected):
         """
-        This functions adds pattern to the image to be projected and overlayed background. 
+        This functions adds a pattern to the projected image and overlayed background image. 
             Parameters:
                 actual_position (int, int): The position to use when pasting the rectangle image into the projected/overlay image
                 to_be_projected (PIL.Image): The pattern to be projected with alpha transparency enabled, 
@@ -548,16 +548,16 @@ class Pattern():
     Attributes:
         user_position (float, float): The pattern's center with respect to the central pixel in the layout  
         rotation (float): The clockwise rotation of the pattern in degrees
-        unit (float): Either 'electrode' or 'um'. Electrode for features which are multiples of the electrode size, or um for micrometers.      
+        unit (float): Either 'pixel' or 'um'. Pixel for features which are multiples of the pixel size, or um for micrometers.      
     """
-    def __init__(self, user_postion = (0, 0), rotation = 0, unit = "electrode"):
+    def __init__(self, user_postion = (0, 0), rotation = 0, unit = "pixel"):
         self.user_position = user_postion
         self.rotation = rotation
         
         if not isinstance(unit, str):
-            raise ValueError(f"The unit should be of a type str, and equal to 'um' or 'electrode', not '{unit}'.")
-        elif (unit != "electrode" and unit != "um"):
-            raise ValueError(f"The provided unit should be 'um' or 'electrode' and not '{unit}'.")
+            raise ValueError(f"The unit should be of a type str, and equal to 'um' or 'pixel', not '{unit}'.")
+        elif (unit != "pixel" and unit != "um"):
+            raise ValueError(f"The provided unit should be 'um' or 'pixel' and not '{unit}'.")
         self.unit = unit
 
     def __str__(self):
@@ -571,9 +571,9 @@ class Text(Pattern):
     """
     Class defining the parameters for drawing a text. 
     Attributes:
-        user_position ((float, float)): The position with respect to the central electrode as multiple of the elec. pixel size. Half electrode means going toward the diagonal
+        user_position ((float, float)): The position with respect to the central pixel as multiple of the elec. pixel size. Half pixel means going toward the diagonal
         rotation (float): Clockwise rotation of the text in degrees
-        unit (float): Either 'electrode' or 'um'. Electrode for features which are multiple of the electrode size, or um for micrometers.      
+        unit (float): Either 'pixel' or 'um'. Pixel for features which are multiple of the pixel size, or um for micrometers.      
         text (string): The text to be projected 
         letter_size (float): The letter's size as a multiple of the elec. pixel size
         gap_size (float): When using Landolt C, the gap opening as a multiple of the pixel size
@@ -584,13 +584,13 @@ class Text(Pattern):
         The bbox is five times the width of the stroke (for the capital, I am not sure for the lower case). 
         The Landolt C has a gap width the size of a stroke width.
         
-        To have a Landolt C with 1-electrode (sometimes refered to as pixel here) opening:
+        To have a Landolt C with 1-pixel (sometimes refered to as pixel here) opening:
             -> as the gap width = stroke width
             -> and the bbox is 5 times the stroke width
             -> the letter size should be 5 times the gap size
-            -> the computation are done in image pixel through self.scaled_electrode or self.pixel_scale
+            -> the computation are done in image pixel through self.scaled_pixel or self.image_pixel_scale
     """    
-    def __init__(self, user_position = (0, 0), rotation = 0, text = "C", unit = "electrode", letter_size = 5, gap_size = None):
+    def __init__(self, user_position = (0, 0), rotation = 0, text = "C", unit = "pixel", letter_size = 5, gap_size = None):
         super().__init__(user_position, rotation, unit)
         self.letter_size = letter_size
         self.text = text
@@ -612,11 +612,11 @@ class Grating(Pattern):
     Attributes:
         user_position (float, int): The position of the grating with respect to the central pixel, move with respect to the pixel size along the X-axis. Y-axis is not implemented yet.  
         rotation (float): The clockwise rotation of the grating in degrees - Between -90° and 90° included 
-        unit (float): Either 'electrode' or 'um'. Electrode for features which are multiple of the electrode size, or um for micrometers.      
+        unit (float): Either 'pixel' or 'um'. Pixel for features which are multiple of the pixel size, or um for micrometers.      
         width_grating (int): The width of grating in micron
         pitch_grating (int): The shortest distance separating each grating (edge to edge) in micron
     """ 
-    def __init__(self, user_position = (0, 0), rotation = 45, unit = "electrode", width_grating = 1, pitch_grating = 1):
+    def __init__(self, user_position = (0, 0), rotation = 45, unit = "pixel", width_grating = 1, pitch_grating = 1):
         super().__init__(user_position, rotation, unit)
 
         if (np.abs(rotation) > 90):
@@ -640,11 +640,11 @@ class Rectangle(Pattern):
     Attributes:          
         user_position (float, float): The position of the grating with respect to the central pixel  
         rotation (float): The clockwise rotation of the rectangle in degrees
-        unit (float): Either 'electrode' or 'um'. Electrode for features which are multiple of the electrode size, or um for micrometers.      
+        unit (float): Either 'pixel' or 'um'. Pixel for features which are multiple of the pixel size, or um for micrometers.      
         width (float): The rectangle's width in micron
         height (float): The rectangle's height in micron
     """    
-    def __init__(self, user_position = (0, 5), rotation = 45, unit = "electrode", width  =  100, height = 100):
+    def __init__(self, user_position = (0, 5), rotation = 45, unit = "pixel", width  =  100, height = 100):
         super().__init__(user_position, rotation, unit)
         self.width = width
         self.height = height 
@@ -664,7 +664,7 @@ class Circle(Pattern):
         user_position (float, float): The position of the circle with respect to the central pixel
         diameter (float): The circle diameter in micron
     """  
-    def __init__(self, user_position = (0, 0), unit="electrode", diameter = 200):
+    def __init__(self, user_position = (0, 0), unit="pixel", diameter = 200):
         super().__init__(user_position, rotation = 0, unit=unit)
         self.diameter = diameter
 
