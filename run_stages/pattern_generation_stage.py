@@ -52,7 +52,7 @@ class PatternGenerationStage(CommonRunStage):
 
             ### Object based implementation
             
-            projection_sequence = Configuration().params["patterns_to_generate"]
+            projection_sequence = Configuration().params["projection_sequences"]
             self.script = projection_sequence.get_script()
 
             for frame in projection_sequence:
@@ -565,6 +565,7 @@ class Pattern():
 
     def draw(self, drawing_board):
         pass
+        
 
 
 class Text(Pattern):
@@ -750,6 +751,17 @@ class Frame():
         Iterates over the subframes of the frame
         """
         return iter(self.subframes)
+    
+    def store_config(self):
+        """
+        Returns a dictionary containing the configuration required for pattern generation 
+        """
+        
+        config = {"repetitions": self.repetitions, "name": self.name, "Subframes": {}}
+        for idx, subframe in enumerate(self):
+            config["Subframes"][f"Subframe_{idx+1}.bmp"] = subframe.duration
+
+        return config
 
 
 class ProjectionSequence():
@@ -775,6 +787,7 @@ class ProjectionSequence():
         
         self.frames = frames
         self.intensity = intensity
+        self.frequency = frequency
         self.frame_period = (1 / frequency)*1000 # in ms
         self.time_step = 0.05
 
@@ -797,6 +810,17 @@ class ProjectionSequence():
                 ]
         return script
     
+    def store_config(self):
+        """
+        Returns a dictionary containing the configuration required for pattern generation 
+        """
+        
+        config = {"intensity": self.intensity, "frequency": self.frequency, "time_step": self.time_step, "Frames": {}}
+        for idx, frame in enumerate(self):
+            config["Frames"][f"Frame_{idx+1}"] = frame.store_config()
+
+        return config
+    
     def check_duration(self):
         """
         Checks whether the sum of subframe duration (exposure time) matches the frame period 
@@ -808,3 +832,6 @@ class ProjectionSequence():
             
             if sum_duration != self.frame_period:
                 raise ValueError(f"The sum of subframe duration ({sum_duration}) does not equal the frame period ({self.frame_period}) for frame '{frame.name}'!")
+            
+    def __str__(self):
+        return self.store_config()
