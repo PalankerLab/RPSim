@@ -772,7 +772,7 @@ class ProjectionSequence():
         frames (list(Frame)): The frames to be displayed
         intensity (float): The intensity of the light projected in mW / mm^2
         frequency (float): The image frequency (or frame rate) in Hz. 
-        time_step (float): In ms, it is an artifact from previous implementation, it can probably discarded
+        time_step (float): The rise and fall time of the current source in ms
 
         Note that the sum of the subframes' duration should equal the frame period (1 / frequency).
     """
@@ -789,7 +789,7 @@ class ProjectionSequence():
         self.intensity = intensity
         self.frequency = frequency
         self.frame_period = (1 / frequency)*1000 # in ms
-        self.time_step = 0.05
+        self.time_step = time_step 
 
         self.check_duration()
 
