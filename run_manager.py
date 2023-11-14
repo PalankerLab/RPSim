@@ -60,7 +60,7 @@ class RunManager:
 	@staticmethod
 	def _stage_data_factory(stage):
 		if stage == RunStages.pattern_generation.name: 
-			stage_data = PatternGenerationStage, ["list_ndarray_images.pkl", "script.csv", "dict_PIL_images.bmp"], Configuration().params["video_sequence_name"]		
+			stage_data = PatternGenerationStage, ["list_ndarray_images.pkl", "script.csv", "dict_PIL_images.bmp", "proj_seq_script.py"], Configuration().params["video_sequence_name"]		
 		elif stage == RunStages.resistive_mesh.name:
 			stage_data = ResistiveMeshStage, [Configuration().params["r_matrix_output_file"]], ""
 		elif stage == RunStages.current_sequence.name:

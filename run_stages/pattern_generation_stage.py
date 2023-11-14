@@ -84,7 +84,7 @@ class PatternGenerationStage(CommonRunStage):
                 self.list_subframes_as_ndarray.append(list_tmp_array)
             
             # Current Sequence stage uses the ndarray frames and script, the PIL images are for the user only
-            return [self.list_subframes_as_ndarray, self.script, self.dict_PIL_images]                        
+            return [self.list_subframes_as_ndarray, self.script, self.dict_PIL_images, Configuration().params["path_projection_sequence_script"]]                        
         else:
             # If we load pre-existing patterns, we do not need to process anything
             return []  

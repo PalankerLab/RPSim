@@ -139,6 +139,10 @@ class CommonUtils:
 
         elif ".gif" in output_path:
             output["gif_data"][0].save(output_path, format="GIF", save_all=True,append_images=output["gif_data"][1:], duration=output["gif_time"], loop=0)
+        
+        elif ".py" in output_path:
+            # Move the script generated after creating the projection sequence
+            os.rename(output, os.path.join(output_directory, file_name))
 
         else:
             # store as regular file
