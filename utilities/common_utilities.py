@@ -167,3 +167,42 @@ class CommonUtils:
 		This function removes the numerical suffix of a variable name to help classify.
 		"""
         return string.rstrip(''.join(str(kk) for kk in range(10)))
+    
+
+def save_cell(path, keep_file):
+    """
+    A function which cleans the saved content of the projection sequence's generation cell. 
+    It is based on some hard coded values, it could be improved. 
+    Parameters:
+        save_cell (string): The path to the output to clean
+        keep_file (bool): If do not generate pattern, remove the script
+    """
+
+    if not keep_file:
+        os.remove(path)
+    else:
+        with open(path) as f:
+            contents = f.readlines()
+
+            # Only keep the last run from the history
+            idx_start = []
+            for idx, line in enumerate(contents):
+                if "### PLASE EDIT BELOW - DO NOT MODIFY THIS COMMENT ###" in line:
+                    idx_start.append(idx)
+
+            idx_end = []
+            for idx, line in enumerate(contents):
+                if "### PLEASE EDIT ABOVE - DO NOT MODIFY THIS COMMENT ###" in line:
+                    idx_end.append(idx)
+
+            if not idx_start or not idx_end:
+                raise ValueError(f"The '... - DO NOT MOVE MODIFY THIS COMMENT' lines were modified and proper saving of this cell's content could not happen!")
+
+            # Convert the list back to a string
+            text = "".join(contents[idx_start[-1] + 1 : idx_end[-1]])
+            # Rewrite the clean content
+            f = open(path, "w")
+            f.write(text)
+            f.close()
+         
+
