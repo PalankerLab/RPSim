@@ -364,19 +364,18 @@ class ImagePattern():
          
         # Starting font size
         font_size = 1
-        font_name = "Sloan.otf"
-        path = os.path.join(".." , "utilities", font_name) 
+        font_path = Configuration().params["font_path"] 
         try:
-            font = ImageFont.truetype(path, font_size)
+            font = ImageFont.truetype(font_path, font_size)
         except OSError as error: 
             print(error) 
-            print(f"The font {font_name} could not be found with the path: {path}")
+            print(f"The font file could not be found with the path: {font_path}")
 
         text = "C"
         while font.getlength(text) < letter_size:
             # Iterate until the text size is slightly larger than the criteria
             font_size += 1
-            font = ImageFont.truetype(path, font_size)
+            font = ImageFont.truetype(font_path, font_size)
         
         return font
     
