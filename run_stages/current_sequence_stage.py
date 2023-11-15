@@ -103,7 +103,7 @@ class CurrentSequenceStage(CommonRunStage):
 														f'Subframe{sub_frame_idx + 1}.bmp')
 					image = plt.imread(sub_frame_image_path).astype(float)
 				
-				image = red_corners(image, image.shape[0])
+				image = red_corners(image, self.image_label.shape[0])
 				#image = red_corners(image, 2000)
 
 				# fill in the photo-current of each pixel for each sub frame
