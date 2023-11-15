@@ -707,7 +707,7 @@ class Subframe():
         duration (float): Projection time in ms, it should be 0 < duration < ProjectionSequence.duration
         patterns (list(ImagePattern)): List of patterns to diplay
     """
-    def __init__(self, duration_ms, patterns):
+    def __init__(self, duration_ms, patterns=[Text(text='C', gap_size=1.2)]):
 
         if (np.abs(duration_ms) <= 0):
             raise ValueError("The frame duration should be larger than 0 ms!")
