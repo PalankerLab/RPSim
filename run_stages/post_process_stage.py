@@ -126,28 +126,6 @@ class PostProcessStage(CommonRunStage):
 			voltage_xy_matrix = np.matmul(V_elem_act, active_current_ua) + np.matmul(V_elem_ret, return_current_ua)
 			voltage_xy_matrix = np.reshape(voltage_xy_matrix, self.xx.shape)
 
-			# logic to only take the V_field at the pixels
-			# pixelCtrIndx = np.zeros([N_pixels,2],dtype = int)
-			# pixelRtnIndx = np.zeros([N_pixels,2],dtype = int)
-			# for i in range(0,px_pos.shape[0],1):
-			#     # for active
-			#     xdistancesFromPixel = np.absolute(XX-px_pos[i,0])
-			#     ydistancesFromPixel = np.absolute(YY-px_pos[i,1])
-			#     pixelCtrIndx[i,:] = np.unravel_index(np.absolute(xdistancesFromPixel+ydistancesFromPixel).argmin(), XX.shape)
-			#     #for return
-			#     returnXOffset = 44 # horizontal distance from pixel center to return electrode (um)
-			#     returnYOffset = 0 # vertical distance from pixel center to return electrode (um)
-			#     xdistancesFromPixel = np.absolute(XX-(px_pos[i,0]+returnXOffset))
-			#     ydistancesFromPixel = np.absolute(YY-(px_pos[i,1]+returnYOffset))
-			#     pixelRtnIndx[i,:] = np.unravel_index(np.absolute(xdistancesFromPixel+ydistancesFromPixel).argmin(), XX.shape)
-			# V_active = np.zeros([N_pixels])
-			# V_return = np.zeros([N_pixels])
-			# for j in range(0,N_pixels,1):
-			#     V_active[j]=V[pixelCtrIndx[j,0],pixelCtrIndx[j,1]]
-			#     V_return[j]=V[pixelRtnIndx[j,0],pixelCtrIndx[j,1]]
-			# Va_time[time_idx,:] = V_active
-			# Vr_time[time_idx,:] = V_return
-
 			# update output structures
 			voltage_3d_matrix[:, :, z_index] = voltage_xy_matrix
 		#return start_time, voltage_3d_matrix
@@ -266,6 +244,10 @@ class PostProcessStage(CommonRunStage):
 			frame_width = abs(x_frame[0])
 
 		if Configuration().params["model"] == Models.BIPOLAR.value:
+
+			# TODO apparently all I have to do is add a line to avoid interpolating
+			# if the time resolution is smaller than the time step we want
+			# just go and select the next time point, do not take the interpolated time
 
 			# initialize all the parameters we need for the post-processing analysis
 			self._initialize_analysis_parameters()
