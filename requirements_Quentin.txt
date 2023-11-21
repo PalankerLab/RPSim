@@ -1,8 +1,0 @@
-deepdiff==5.8.0
-matplotlib==3.5.1
-numpy==1.21.5
-Pillow==10.1.0
-prettytable==2.4.0
-PySpice==1.5
-PySpice==1.5
-scipy==1.7.3
