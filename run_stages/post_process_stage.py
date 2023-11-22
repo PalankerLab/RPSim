@@ -53,7 +53,7 @@ class PostProcessStage(CommonRunStage):
 		active_results = np.loadtxt(Configuration().params["r_matrix_input_file_active"], delimiter=',')
 		self.active_x = active_results[0, :]
 		self.active_voltage_mv = active_results[1:, :]
-
+    
 		if Configuration().params["model"] == Models.MONOPOLAR.value:
 			
 			# TODO rename into more meaningful variable names
@@ -111,6 +111,11 @@ class PostProcessStage(CommonRunStage):
 		"""
 		Handles the time analysis for bipolar configuration.
 		The time analysis for monopolar configuration is not available yet. 
+			Parameters:
+				start_time: 
+				idx_time (int): the current time slice used for the progress bar
+				total_time (int): the total number of time slice to analyze for the progress bar 
+				average_over_pulse_duration (bool): For averaging or not
 		"""
 
 		# shift time vector to point of interest
@@ -317,7 +322,6 @@ class PostProcessStage(CommonRunStage):
 								 "t_ms": [0],
 								 "pixel_coordinates_um": self.pixel_coordinates,
 								 "on_diode_data": on_diode_data_during_stable_pulse}
-
 			#frame_width = self.x_frame.size
 			frame_width = abs(self.x_frame[0])
 
@@ -333,12 +337,13 @@ class PostProcessStage(CommonRunStage):
 			voltage_4d_matrix = np.zeros(self.xx.shape + (len(self.z_values),) + (len(self.time_points_to_analyze_ms),))
 
 			output_dictionary = {"v(x,y,z,t)_mv": None,
-									  "2d_mesh_um": (self.xx, self.yy),
-									  "3d_mesh_um": (self.xxx, self.yyy, self.zzz),
-									  "z_um": self.z_values,
-									  "t_ms": self.time_points_to_analyze_ms,
-									  "pixel_coordinates_um": self.pixel_coordinate,
-									  "on_diode_data": on_diode_data_during_stable_pulse}
+									"2d_mesh_um": (self.xx, self.yy),
+									"3d_mesh_um": (self.xxx, self.yyy, self.zzz),
+									"z_um": self.z_values,
+									"t_ms": self.time_points_to_analyze_ms,
+									"pixel_coordinates_um": self.pixel_coordinates,
+									"on_diode_data": on_diode_data_during_stable_pulse}
+
 
 			# # run post-processing concurrently for all the time points
 			# with Pool(multiprocessing.cpu_count()//3) as pool:

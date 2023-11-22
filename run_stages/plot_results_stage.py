@@ -13,6 +13,8 @@ class PlotResultsStage(CommonRunStage):
 	def __init__(self, *args):
 		super().__init__(*args)
 		self.simulation_results = self.outputs_container[RunStages.simulation.name][0]
+		self.post_process_results = self.outputs_container[RunStages.post_process.name][0]
+
 	@property
 	def stage_name(self):
 		return RunStages.plot_results.name
@@ -47,6 +49,18 @@ class PlotResultsStage(CommonRunStage):
 		plt.grid()
 		output_figures.append(fig2)
 
+		# extract one diode that should be on
+		time = self.post_process_results["on_diode_data"]["time_ms"]
+		on_diodes = list(self.post_process_results["on_diode_data"].keys())
+		one_on_diode = on_diodes[5]
+
+		# plot this diode
+		fig3 = plt.figure()
+		plt.plot(time, self.post_process_results["on_diode_data"][one_on_diode]["current"], linewidth=1)
+		plt.ylabel("Current on diode {} (mV)".format(one_on_diode))
+		plt.xlabel("Time (ms)")
+		plt.grid()
+		output_figures.append(fig3)
 
 		return output_figures
 
