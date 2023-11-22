@@ -37,14 +37,31 @@ class PostProcessStage(CommonRunStage):
 		return RunStages.post_process.name
 
 	def _initialize_analysis_parameters(self):
+		"""
+		Initialize the common and specific parameters for either the monopoar or bipolar configuration.
+		"""
+		# Common parameters to mono and bipolar configurations
+		self.number_of_pixels = Configuration().params["number_of_pixels"]
+		self.start_time_ms = Configuration().params["pulse_start_time_in_ms"]
+		self.pulse_duration = Configuration().params["stimulation_duration_in_ms"]
+		self.averaging_resolution_ms = self.pulse_duration
+		self.time_points_to_analyze_ms = [self.start_time_ms]
 
-			# extract analysis parameters
-			number_of_pixels = Configuration().params["number_of_pixels"]
-			self.start_time_ms = Configuration().params["pulse_start_time_in_ms"]
-			self.pulse_duration = Configuration().params["stimulation_duration_in_ms"]
-			self.averaging_resolution_ms = self.pulse_duration
-			self.time_points_to_analyze_ms = [self.start_time_ms]
+		self.pixel_coordinates = np.loadtxt(Configuration().params["r_matrix_input_file_px_pos"], delimiter=',')
 
+		active_results = np.loadtxt(Configuration().params["r_matrix_input_file_active"], delimiter=',')
+		self.active_x = active_results[0, :]
+		self.active_voltage_mv = active_results[1:, :]
+
+		if Configuration().params["model"] == Models.MONOPOLAR.value:
+			
+			# TODO rename into more meaningful variable names
+			V_dict = np.loadtxt(Configuration().params["r_matrix_input_file_EP_return_2D"], delimiter=',')  # mV
+			self.x_frame = V_dict[0,:]
+			self.y_frame = V_dict[1,:]
+			self.V_dict_ret = V_dict[2:, :]
+
+		if Configuration().params["model"] == Models.BIPOLAR.value:
 			if Configuration().params["analyze_time_dynamics"]:
 				self.averaging_resolution_ms = 1
 				self.time_points_to_analyze_ms = list(np.arange(start=self.start_time_ms,
@@ -56,13 +73,10 @@ class PostProcessStage(CommonRunStage):
 			self.z_values = Configuration().params["depth_values_in_um"] if Configuration().params.get("depth_values_in_um") else default_depth_params
 
 			# populate arrays with simulation values
-			self.full_active_current_ua = np.array([self.simulation_stage_output[f'VCProbe{x + 1}'] for x in range(number_of_pixels)]) * 1E6
-			self.full_return_current_ua = np.array([self.simulation_stage_output[f'VrCProbe{x + 1}'] for x in range(number_of_pixels)]) * 1E6
+			self.full_active_current_ua = np.array([self.simulation_stage_output[f'VCProbe{x + 1}'] for x in range(self.number_of_pixels)]) * 1E6
+			self.full_return_current_ua = np.array([self.simulation_stage_output[f'VrCProbe{x + 1}'] for x in range(self.number_of_pixels)]) * 1E6
 
 			# load all needed COMSOL files
-			active_results = np.loadtxt(Configuration().params["r_matrix_input_file_active"], delimiter=',')
-			self.active_x = active_results[0, :]
-			self.active_voltage_mv = active_results[1:, :]
 
 			return_results = np.loadtxt(Configuration().params["r_matrix_input_file_return"], delimiter=',')
 			self.return_x = return_results[0, :]
@@ -73,8 +87,6 @@ class PostProcessStage(CommonRunStage):
 			self.y_return_near = return_near_results[1, :]
 			self.return_near_voltage_mv = return_near_results[2:, :]
 
-			self.pixel_coordinates = np.loadtxt(Configuration().params["r_matrix_input_file_px_pos"], delimiter=',')
-
 			# create a 2D and a 3D mesh for populating the potential matrices
 			frame_width = Configuration().params["frame_width"]
 			self.x_frame = np.arange(start=-frame_width, stop=frame_width + 1, step=4)
@@ -83,9 +95,9 @@ class PostProcessStage(CommonRunStage):
 			self.xx, self.yy = np.meshgrid(self.x_frame, self.y_frame)
 			self.xxx, self.yyy, self.zzz = np.meshgrid(self.x_frame, self.y_frame, self.z_values)
 
-			self.xx_element = np.zeros([self.x_frame.size * self.y_frame.size, number_of_pixels])
-			self.yy_element = np.zeros([self.x_frame.size * self.y_frame.size, number_of_pixels])
-			for kk in range(number_of_pixels):
+			self.xx_element = np.zeros([self.x_frame.size * self.y_frame.size, self.number_of_pixels])
+			self.yy_element = np.zeros([self.x_frame.size * self.y_frame.size, self.number_of_pixels])
+			for kk in range(self.number_of_pixels):
 				self.xx_element[:, kk] = np.abs(self.xx.flatten() - self.pixel_coordinates[kk, 0])
 				self.yy_element[:, kk] = np.abs(self.yy.flatten() - self.pixel_coordinates[kk, 1])
 
@@ -95,6 +107,9 @@ class PostProcessStage(CommonRunStage):
 			# Vr_time = np.zeros([len(times), N_pixels])
 
 	def _generate_potential_matrix_per_time_section(self, start_time, idx_time, total_time):
+		"""
+		Initialize the parameters according to the bipolar configuration. 
+		"""
 
 		# shift time vector to point of interest
 		shifted_time_vector = self.simulation_stage_output['time'] * 1E3 - start_time
@@ -179,41 +194,25 @@ class PostProcessStage(CommonRunStage):
 		:param kwargs:
 		:return:
 		"""
-		self.z_values = None
+		self.z_values = None # Why?
+		self._initialize_analysis_parameters()
 
 		if Configuration().params["model"] == Models.MONOPOLAR.value:
 
-			pulse_width = Configuration().params["stimulation_duration_in_ms"]
-			pulse_start = Configuration().params["pulse_start_time_in_ms"]
-
-			V_dict = np.loadtxt(Configuration().params["r_matrix_input_file_active"], delimiter=',')  # mV
-			X_act = V_dict[0, :]
-			V_dict_act = V_dict[1:, :]
-
-			V_dict = np.loadtxt(Configuration().params["r_matrix_input_file_return"], delimiter=',')  # mV
-			x_frame = V_dict[0, :]
-			y_frame = V_dict[1, :]
-			V_dict_ret = V_dict[2:, :]
-
-			px_pos = np.loadtxt(Configuration().params["r_matrix_input_file_px_pos"], delimiter=',')  # mV
-			print(px_pos)
-
-			number_of_pixels = px_pos.shape[0]
-
-			XX, YY = np.meshgrid(x_frame, y_frame)
-			XX_elem = np.zeros([x_frame.size * y_frame.size, number_of_pixels])
-			YY_elem = np.zeros([x_frame.size * y_frame.size, number_of_pixels])
-			for kk in range(number_of_pixels):
-				XX_elem[:, kk] = np.abs(XX.flatten() - px_pos[kk, 0])
-				YY_elem[:, kk] = np.abs(YY.flatten() - px_pos[kk, 1])
+			XX, YY = np.meshgrid(self.x_frame, self.y_frame)
+			XX_elem = np.zeros([self.x_frame.size * self.y_frame.size, self.number_of_pixels])
+			YY_elem = np.zeros([self.x_frame.size * self.y_frame.size, self.number_of_pixels])
+			for kk in range(self.number_of_pixels):
+				XX_elem[:, kk] = np.abs(XX.flatten() - self.pixel_coordinates[kk, 0])
+				YY_elem[:, kk] = np.abs(YY.flatten() - self.pixel_coordinates[kk, 1])
 
 			dist_elem = np.sqrt(XX_elem ** 2 + YY_elem ** 2)
 
-			I_act_t = np.array([self.simulation_stage_output[f'VCProbe{x + 1}'] for x in range(number_of_pixels)]) * 1E6  # uA
+			I_act_t = np.array([self.simulation_stage_output[f'VCProbe{x + 1}'] for x in range(self.number_of_pixels)]) * 1E6  # uA
 			I_ret_t = np.array(self.simulation_stage_output[f'VCProbe{0}']) * 1E6  # uA
 
-			T = self.simulation_stage_output['time'] * 1E3 - pulse_start
-			t_idx = (T > 0.1) & (T < pulse_width)
+			T = self.simulation_stage_output['time'] * 1E3 - self.start_time_ms
+			t_idx = (T > 0.1) & (T < self.pulse_duration)
 			I_act = I_act_t[:, t_idx]
 			I_ret = I_ret_t[t_idx]
 			T = T[t_idx]
@@ -235,8 +234,8 @@ class PostProcessStage(CommonRunStage):
 					pbar_z.update(1)
 					sleep(0.1)
 					
-					V_elem_act = np.interp(dist_elem, X_act, V_dict_act[z_idx, :])
-					V_ret = V_dict_ret[(z_idx) * x_frame.size: (z_idx + 1) * x_frame.size, :]
+					V_elem_act = np.interp(dist_elem, self.active_x, self.active_voltage_mv[z_idx, :])
+					V_ret = self.V_dict_ret[(z_idx) * self.x_frame.size: (z_idx + 1) * self.x_frame.size, :]
 
 					V = np.matmul(V_elem_act, I_act)
 					V = np.reshape(V, XX.shape) + V_ret * I_ret
@@ -253,10 +252,10 @@ class PostProcessStage(CommonRunStage):
 								 "3d_mesh_um": None,
 								 "z_um": self.z_values,
 								 "t_ms": [0],
-								 "pixel_coordinates_um": px_pos}
+								 "pixel_coordinates_um": self.pixel_coordinates}
 
-			#frame_width = x_frame.size
-			frame_width = abs(x_frame[0])
+			#frame_width = self.x_frame.size
+			frame_width = abs(self.x_frame[0])
 
 		if Configuration().params["model"] == Models.BIPOLAR.value:
 
@@ -265,7 +264,6 @@ class PostProcessStage(CommonRunStage):
 			# just go and select the next time point, do not take the interpolated time
 
 			# initialize all the parameters we need for the post-processing analysis
-			self._initialize_analysis_parameters()
 
 			# initialize return structures
 			voltage_4d_matrix = np.zeros(self.xx.shape + (len(self.z_values),) + (len(self.time_points_to_analyze_ms),))
