@@ -1,10 +1,10 @@
 import glob
 import multiprocessing
 import os
+import sys
 
 import matplotlib
 from PIL import Image
-import sys
 from multiprocessing import Pool
 
 import numpy as np
@@ -16,6 +16,9 @@ from configuration.models import Models
 from configuration.stages import RunStages
 
 from run_stages.common_run_stage import CommonRunStage
+
+from tqdm import tqdm
+from time import sleep
 
 
 class PostProcessStage(CommonRunStage):
@@ -91,7 +94,7 @@ class PostProcessStage(CommonRunStage):
 			# Va_time = np.zeros([len(times), N_pixels])
 			# Vr_time = np.zeros([len(times), N_pixels])
 
-	def _generate_potential_matrix_per_time_section(self, start_time):
+	def _generate_potential_matrix_per_time_section(self, start_time, idx_time, total_time):
 
 		# shift time vector to point of interest
 		shifted_time_vector = self.simulation_stage_output['time'] * 1E3 - start_time
@@ -113,22 +116,28 @@ class PostProcessStage(CommonRunStage):
 
 
 		# calculate potential matrix for each z value in this time window
-		for z_index, z_value in enumerate(self.z_values):
-			V_elem_act = np.interp(self.dist_elem, self.active_x, self.active_voltage_mv[z_index, :])
-			V_elem_ret = np.interp(self.dist_elem, self.return_x, self.return_voltage_mv[z_index, :])
+		# Generate progress bar
+		with tqdm(total = len(self.z_values), file = sys.stdout) as pbar_z:
+			for z_index, z_value in enumerate(self.z_values):
+				# Progress bar 
+				pbar_z.set_description(f'Processing Z-slice: {1 + z_index} of time point {idx_time + 1}/{total_time}')
+				pbar_z.update(1)
+				sleep(0.1)
+				V_elem_act = np.interp(self.dist_elem, self.active_x, self.active_voltage_mv[z_index, :])
+				V_elem_ret = np.interp(self.dist_elem, self.return_x, self.return_voltage_mv[z_index, :])
 
-			V_near = self.return_near_voltage_mv[(z_index) * self.x_return_near.size: (z_index + 1) * self.x_return_near.size, :]
-			myfun = interpolate.RectBivariateSpline(self.x_return_near, self.y_return_near, V_near.T)
+				V_near = self.return_near_voltage_mv[(z_index) * self.x_return_near.size: (z_index + 1) * self.x_return_near.size, :]
+				myfun = interpolate.RectBivariateSpline(self.x_return_near, self.y_return_near, V_near.T)
 
-			idx_near = (self.xx_element < np.max(self.x_return_near)) & (self.yy_element < np.max(self.y_return_near))
-			V_elem_ret[idx_near] = myfun.ev(self.xx_element[idx_near], self.yy_element[idx_near])
+				idx_near = (self.xx_element < np.max(self.x_return_near)) & (self.yy_element < np.max(self.y_return_near))
+				V_elem_ret[idx_near] = myfun.ev(self.xx_element[idx_near], self.yy_element[idx_near])
 
-			voltage_xy_matrix = np.matmul(V_elem_act, active_current_ua) + np.matmul(V_elem_ret, return_current_ua)
-			voltage_xy_matrix = np.reshape(voltage_xy_matrix, self.xx.shape)
+				voltage_xy_matrix = np.matmul(V_elem_act, active_current_ua) + np.matmul(V_elem_ret, return_current_ua)
+				voltage_xy_matrix = np.reshape(voltage_xy_matrix, self.xx.shape)
 
-			# update output structures
-			voltage_3d_matrix[:, :, z_index] = voltage_xy_matrix
-		#return start_time, voltage_3d_matrix
+				# update output structures
+				voltage_3d_matrix[:, :, z_index] = voltage_xy_matrix
+				#return start_time, voltage_3d_matrix
 
 		return voltage_3d_matrix
 
@@ -174,7 +183,7 @@ class PostProcessStage(CommonRunStage):
 
 		if Configuration().params["model"] == Models.MONOPOLAR.value:
 
-			pulse_width = Configuration().params["pulse_duration_ms"]
+			pulse_width = Configuration().params["stimulation_duration_in_ms"]
 			pulse_start = Configuration().params["pulse_start_time_in_ms"]
 
 			V_dict = np.loadtxt(Configuration().params["r_matrix_input_file_active"], delimiter=',')  # mV
@@ -219,14 +228,20 @@ class PostProcessStage(CommonRunStage):
 			voltage_3d_matrix = np.zeros(XX.shape + (len(self.z_values),))
 
 			# create voltage x-y matrix for each z plane
-			for z_idx in range(len(self.z_values)):
-				V_elem_act = np.interp(dist_elem, X_act, V_dict_act[z_idx, :])
-				V_ret = V_dict_ret[(z_idx) * x_frame.size: (z_idx + 1) * x_frame.size, :]
+			with tqdm(total = len(self.z_values), file = sys.stdout) as pbar_z:
+				for z_idx in range(len(self.z_values)):
+					# Progress bar monopoalr 
+					pbar_z.set_description(f'Processing z-slice: {1 + z_idx}')
+					pbar_z.update(1)
+					sleep(0.1)
+					
+					V_elem_act = np.interp(dist_elem, X_act, V_dict_act[z_idx, :])
+					V_ret = V_dict_ret[(z_idx) * x_frame.size: (z_idx + 1) * x_frame.size, :]
 
-				V = np.matmul(V_elem_act, I_act)
-				V = np.reshape(V, XX.shape) + V_ret * I_ret
+					V = np.matmul(V_elem_act, I_act)
+					V = np.reshape(V, XX.shape) + V_ret * I_ret
 
-				voltage_3d_matrix[:, :, z_idx] = V
+					voltage_3d_matrix[:, :, z_idx] = V
 
 			# initialize return structures
 			voltage_4d_matrix = np.zeros(XX.shape + (len(self.z_values),) + (1,))
@@ -272,7 +287,7 @@ class PostProcessStage(CommonRunStage):
 			# iterate over time and create 3D potential matrix for each time point
 			for time_point_index, time_point_value in enumerate(self.time_points_to_analyze_ms):
 				# calculate metrix for this time point
-				voltage_3d_matrix = self._generate_potential_matrix_per_time_section(start_time=time_point_value)
+				voltage_3d_matrix = self._generate_potential_matrix_per_time_section(start_time=time_point_value, idx_time=time_point_index, total_time=len(self.time_points_to_analyze_ms))
 				# add result to output structure
 				voltage_4d_matrix[:, :, :, time_point_index] = voltage_3d_matrix
 
