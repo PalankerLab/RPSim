@@ -27,8 +27,17 @@ class CurrentSequenceStage(CommonRunStage):
 			'pixel_size': Configuration().params["pixel_size"]
 		}
 
+		# Whether to look for generated patterns or pre-existing patterns
+		self.is_generated = Configuration().params["generate_pattern"]
+		
 		# define paths
-		self.image_sequence_input_folder = os.path.join(Configuration().params["user_input_path"], "image_sequence",self.output_directory_name)
+		if self.is_generated:
+			# If the patterns are generated, the source folder is in the output path
+			self.image_sequence_input_folder = self.output_directory
+		else:
+			# When loading existing patterns, the source folder is in the input path
+			self.image_sequence_input_folder = os.path.join(Configuration().params["user_input_path"], "image_sequence",self.output_directory_name)
+		
 		self.sequence_script_input_file = os.path.join(self.image_sequence_input_folder, "seq_time.csv")
 
 		# initialize gif params
@@ -56,6 +65,11 @@ class CurrentSequenceStage(CommonRunStage):
 		:param kwargs:
 		:return:
 		"""
+		
+		self.is_generated = Configuration().params["generate_pattern"]
+		if self.is_generated:
+			#list_images = self.outputs_container["pattern_generation"][0]
+			list_images = self.outputs_container[RunStages.pattern_generation.name][0]
 		self._parse_script_file()
 
 		# duration of the frames in ms
@@ -69,18 +83,28 @@ class CurrentSequenceStage(CommonRunStage):
 		self.video_sequence['Frames'] = [deepcopy(self.video_sequence['T_subframes']) for _ in range(
 			self.number_of_pixels)]
 
+		# Iterate on the images
 		for frame_idx in range(len(self.script)):
 			number_of_sub_frames = len(self.video_sequence['T_subframes'][frame_idx])
 			image_stack_temp = []
 
+			if self.is_generated:
+				list_subframes = list_images[frame_idx]
+			
+			# Iterate on the subframes
 			for sub_frame_idx in range(number_of_sub_frames):
-				# get current subframe
-				sub_frame_image_path = os.path.join(Configuration().params["user_input_path"], 'image_sequence',
-													Configuration().params["video_sequence_name"],
-													f'Frame{frame_idx + 1}',
-													f'Subframe{sub_frame_idx + 1}.bmp')
-				image = plt.imread(sub_frame_image_path).astype(float)
-				image = red_corners(image)
+
+				if self.is_generated:
+					image = list_subframes[sub_frame_idx]
+				else:
+					sub_frame_image_path = os.path.join(Configuration().params["user_input_path"], 'image_sequence',
+														Configuration().params["video_sequence_name"],
+														f'Frame{frame_idx + 1}',
+														f'Subframe{sub_frame_idx + 1}.bmp')
+					image = plt.imread(sub_frame_image_path).astype(float)
+				
+				image = red_corners(image, self.image_label.shape[0])
+				#image = red_corners(image, 2000)
 
 				# fill in the photo-current of each pixel for each sub frame
 				light_on_pixels = img2pixel(image, self.image_label)
@@ -97,16 +121,19 @@ class CurrentSequenceStage(CommonRunStage):
 		self.gif_time = [x * 10 for x in self.gif_time]
 
 		return [self.video_sequence, {"gif_data": self.gif_image, "gif_time": self.gif_time}, self.image_sequence_input_folder]
-
+	
 	def _parse_script_file(self):
 		"""
 		This function reads the sequence definition from the csv spec file, including time information and irradiance.
 		"""
-		# open csv file with video sequence description
-		with open(self.sequence_script_input_file, 'r') as f:
-			csv_file = csv.reader(f)
-			for row in csv_file:
-				self.script.append(row)
+		if self.is_generated:
+			self.script = self.outputs_container[RunStages.pattern_generation.name][1]
+		else:
+			# open csv file with video sequence description
+			with open(self.sequence_script_input_file, 'r') as f:
+				csv_file = csv.reader(f)
+				for row in csv_file:
+					self.script.append(row)
 
 		# photocurrent per pixel at 1mW/mm^2
 		photocurrent = Configuration().params["photosensitive_area"] * Configuration().params["light_to_current_conversion_rate"] \
@@ -117,5 +144,7 @@ class CurrentSequenceStage(CommonRunStage):
 		self.video_sequence['time_step'] = float(self.script.pop(0)[1])
 		self.video_sequence['L_images'] = []
 		self.video_sequence['T_subframes'] = []
-		self.script = self.script[1:]
+		# Removes the row containing the column names (i.e. Frame 'Repetition', 'Subframe1', ..., 'SubframeN')
+		if not self.is_generated:
+			self.script = self.script[1:]
 

@@ -15,6 +15,7 @@ from utilities.common_utilities import CommonUtils
 from utilities.exceptions import NeededOutputNotFound
 
 from run_stages.circuit_stage import CircuitStage
+from run_stages.pattern_generation_stage import PatternGenerationStage
 from run_stages.current_sequence_stage import CurrentSequenceStage
 from run_stages.plot_results_stage import PlotResultsStage
 from run_stages.post_process_stage import PostProcessStage
@@ -58,7 +59,9 @@ class RunManager:
 
 	@staticmethod
 	def _stage_data_factory(stage):
-		if stage == RunStages.resistive_mesh.name:
+		if stage == RunStages.pattern_generation.name: 
+			stage_data = PatternGenerationStage, ["list_ndarray_images.pkl", "script.csv", "dict_PIL_images.bmp", "proj_seq_script.py"], Configuration().params["video_sequence_name"]		
+		elif stage == RunStages.resistive_mesh.name:
 			stage_data = ResistiveMeshStage, [Configuration().params["r_matrix_output_file"]], ""
 		elif stage == RunStages.current_sequence.name:
 			stage_data = CurrentSequenceStage, ["video_sequence.pkl", "video_sequence.gif"], Configuration().params["video_sequence_name"]

@@ -50,7 +50,7 @@ def img2pixel(img_in, label):
     """
     # convert to grayscale
     img = img_in[:, :, 0] * 0.2989 + img_in[:, :, 1] * 0.5870 + img_in[:, :, 2] * 0.1141
-    assert (img.shape == label.shape), "Dimension inconsistent between the input image and the label map."
+    assert (img.shape == label.shape), f"Dimension inconsistent between the input image {img.shape} and the label map {label.shape}."
 
     N_pixels = label.max()
     light_on_pixels = np.zeros(N_pixels)

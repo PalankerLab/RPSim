@@ -240,7 +240,7 @@ class Configuration(metaclass=Singleton):
 		"""
 		# generate output table
 		configuration_table = PrettyTable()
-		skip_items = ['Vini_act', 'Vini_ret'] #skip some calculated values for readability
+		skip_items = ['Vini_act', 'Vini_ret', 'projection_sequences'] #skip some calculated values for readability
 		for key, value in self.params.items():
 			if key in skip_items:
 				continue
@@ -260,6 +260,8 @@ class Configuration(metaclass=Singleton):
 		:param output_directory: the directory in which to store the file
 		:return:
 		"""
+		# Special case for projection sequences
+		self.params["projection_sequence"] = self.params["projection_sequences"].store_config()
 		with open(os.path.join(output_directory, self.configuration_file_name), 'wb') as handle:
 			pickle.dump(self.params, handle, protocol=pickle.HIGHEST_PROTOCOL)
 

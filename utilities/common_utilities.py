@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from datetime import datetime
 from distutils.dir_util import copy_tree
+from configuration.configuration_manager import Configuration
 
 import matplotlib.pyplot
 
@@ -84,8 +85,32 @@ class CommonUtils:
         :param file_name: the name of the file with the output data
         :return:
         """
+
+        # This is the output from PatternGenerationStage, it is more complicated to store 
+        # TODO Not very robust, could be improved   
+        if file_name is not None and "PIL_images.bmp" in file_name:
+            Path(os.path.dirname(output_directory)).mkdir(parents=True, exist_ok=True)
+
+            for img_name, subframes in output.items():
+                # Create the path and folder with the image name
+                output_path = os.path.join(output_directory, img_name + "/")
+                Path(os.path.dirname(output_path)).mkdir(parents=True, exist_ok=True)
+
+                for subframe in subframes:
+                    # subframe is (str, (PIL, PIL)) - with the first image the overlay, second projected
+                    overlay_path = os.path.join(output_path, subframe[0] + "_overlay.bmp")
+                    projected_path = os.path.join(output_path, subframe[0] + ".bmp")
+                    subframe[1][0].save(overlay_path)
+                    subframe[1][1].save(projected_path)
+            return 
+
         # if the output is a directory, just copy to output folder
         if isinstance(output, str) and os.path.isdir(output):
+            if output == output_directory:
+                # Special case when we generate the patterns
+                # The input folder does not exist as we are creating the data
+                # The input is in the output folder
+                return
             copy_tree(output, output_directory)
             return
 
@@ -114,6 +139,10 @@ class CommonUtils:
 
         elif ".gif" in output_path:
             output["gif_data"][0].save(output_path, format="GIF", save_all=True,append_images=output["gif_data"][1:], duration=output["gif_time"], loop=0)
+        
+        elif ".py" in output_path:
+            # Move the script generated after creating the projection sequence
+            os.rename(output, os.path.join(output_directory, file_name))
 
         else:
             # store as regular file
@@ -138,3 +167,44 @@ class CommonUtils:
 		This function removes the numerical suffix of a variable name to help classify.
 		"""
         return string.rstrip(''.join(str(kk) for kk in range(10)))
+    
+
+def save_cell(path, generate_pattern):
+    """
+    A function which cleans the saved content of the projection sequence's generation cell. 
+    It is based on some hard coded values, it could be improved. 
+    Parameters:
+        save_cell (string): The path to the output to clean
+        generate_pattern (bool): If not generate pattern, return an empty script
+    """    
+    with open(path) as f:
+        contents = f.readlines()
+
+        if generate_pattern:
+            # Only keep the last run from the history
+            idx_start = []
+            for idx, line in enumerate(contents):
+                if "### PLASE EDIT BELOW - DO NOT MODIFY THIS COMMENT ###" in line:
+                    idx_start.append(idx)
+
+            idx_end = []
+            for idx, line in enumerate(contents):
+                if "### PLEASE EDIT ABOVE - DO NOT MODIFY THIS COMMENT ###" in line:
+                    idx_end.append(idx)
+
+            if not idx_start or not idx_end:
+                raise ValueError(f"The '... - DO NOT MOVE MODIFY THIS COMMENT' lines were modified and proper saving of this cell's content could not happen!")
+
+            # Convert the list back to a string
+            text = "".join(contents[idx_start[-1] + 1 : idx_end[-1]])
+        else:
+            text = 'pass'
+            
+        # Rewrite the clean content
+        f = open(path, "w")
+        f.write(text)
+        f.close()
+
+
+         
+
