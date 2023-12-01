@@ -42,17 +42,17 @@ class PostProcessStage(CommonRunStage):
 		Initialize the common and specific parameters for either the monopoar or bipolar configuration.
 		"""
 		# Common parameters to mono and bipolar configurations
-		self.averaging_resolution_ms = self.pulse_duration
-		self.time_points_to_analyze_ms = [self.start_time_ms]
 		self.number_of_pixels = Configuration().params["number_of_pixels"]
 		self.start_time_ms = Configuration().params["pulse_start_time_in_ms"]
-		self.pulse_duration = Configuration().params["stimulation_duration_in_ms"]
+		self.pulse_duration = Configuration().params["pulse_duration_in_ms"]
 		self.average_over_pulse_duration = Configuration().params["average_over_pulse_duration"]
 		self.pixel_coordinates = np.loadtxt(Configuration().params["r_matrix_input_file_px_pos"], delimiter=',')
 
 		active_results = np.loadtxt(Configuration().params["r_matrix_input_file_active"], delimiter=',')
 		self.active_x = active_results[0, :]
 		self.active_voltage_mv = active_results[1:, :]
+		self.averaging_resolution_ms = self.pulse_duration
+		self.time_points_to_analyze_ms = [self.start_time_ms]
     
 		if Configuration().params["model"] == Models.MONOPOLAR.value:
 			
