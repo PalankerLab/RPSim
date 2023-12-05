@@ -1,0 +1,1 @@
+This is a multiplexed Landolt C meant to be projected onto a PS100 pattern. 

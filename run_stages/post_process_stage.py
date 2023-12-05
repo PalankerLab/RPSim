@@ -71,6 +71,7 @@ class PostProcessStage(CommonRunStage):
 
 			# define depth resolution
 			default_depth_params =  [x*1 for x in range(160)]
+			#default_depth_params = [0, 45, 77, 86, 109, 142]
 			self.z_values = Configuration().params["depth_values_in_um"] if Configuration().params.get("depth_values_in_um") else default_depth_params
 
 			# populate arrays with simulation values
