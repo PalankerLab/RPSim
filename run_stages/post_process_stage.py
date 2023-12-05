@@ -51,6 +51,7 @@ class PostProcessStage(CommonRunStage):
 		active_results = np.loadtxt(Configuration().params["r_matrix_input_file_active"], delimiter=',')
 		self.active_x = active_results[0, :]
 		self.active_voltage_mv = active_results[1:, :]
+		# TODO add the same criterion for the time dynamcis, like time_dynamics_resolution_ms
 		self.averaging_resolution_ms = self.pulse_duration
 		self.time_points_to_analyze_ms = [self.start_time_ms]
     
@@ -125,24 +126,54 @@ class PostProcessStage(CommonRunStage):
 		Handles the time analysis for bipolar configuration.
 		The time analysis for monopolar configuration is not available yet. 
 			Parameters:
-				start_time: 
+				start_time (float): The time where current becomes steady enough and time averaging can start 
 				idx_time (int): the current time slice used for the progress bar
 				total_time (int): the total number of time slice to analyze for the progress bar 
 				average_over_pulse_duration (bool): For averaging or not
 		"""
 
 		# shift time vector to point of interest
+		"""
+		Here is the logic behind the previous implementation: 
+		Xyce will output a current simulation w.r.t time of a certain duration parametrized by: simulation_duration_sec in user_interface
+		This time simulation is only relevant when the current becomes steady, which is manually determined in Nathan's code depending on the
+		simulation scenario. Here it is determined in the user_interface as pulse_start_time_in_ms
+		We need to either autommate it, or provide clearer instructions in user_interface.
+		
+		When doing time_averaging, the whole time_frame of interest (from start_time to averaging_resolution_ms) is selected and all the currents are averaged.
+		When time dynamics is enabled, several smaller time frames are analyzed within the 'big' time frame of interset. 
+		The size of the small time frame is determined by end_time (time_step in Nathan's code) which should be called something time_dynamics_resolution_ms.
+		The currents are still averaged, but within a much smaller time frame of time_dynamics_resolution_ms. This resolution should correspond to a period
+		of time where the current is rather steady and we do not lose too much information by averaging (1 to 2 ms according to Nathan).   
+
+		- start_time is currently manually selected as the time when the curent becomes steady for a given pulse (or pulse_start_time_in_ms in user_interface)
+		  Steady state can be seen in the plots "Current vs Time" outputted by the Simulation stage for an active pixel.
+		  Finding an active pixel is not automated yet, the one RPSim outputs is hardcoded and is likely inactive.  
+		--> start_time needs to either be automated, or manually inputted for each type of simulation from the user_interface. 
+		
+		- end_time (or time_step in Nathan's notebooks), corresponds to the time resolution (or time frame) for the time dynamics analysis. 
+		  It should probably be renamed time_dynamics_resolution_ms and be set as a parameter in user_interface.
+		  It also depends on the type of simulation we are running. According to Nahtan, something between 1 to 2 ms is good enough. 
+		--> To make the code compatible with time dynamics, we have to make sure that time indices outputted by Xyce do exist: for the
+		  time resolution we want, the start time and length of the time frame (another variable). This will avoid the NaN we currently get.
+		"""
 		shifted_time_vector = self.simulation_stage_output['time'] * 1E3 - start_time
 
 		# define end time based on whether we average over the pulse duration or not
-		end_time = self.averaging_resolution_ms if average_over_pulse_duration else 0.12		
+		#end_time = self.averaging_resolution_ms if average_over_pulse_duration else 0.12
+		# TODO the else should return the new variable time_dynamics_resolution_ms 
+		end_time = self.averaging_resolution_ms if average_over_pulse_duration else 2.0		
 		
 		# filter the time indices that correspond to the current time window
-		time_indices_to_include = (shifted_time_vector > 0.1) & (shifted_time_vector < end_time) # difference with Nathan's code, constant is 0.0001, end_time is also 2 or 1.8
+		#time_indices_to_include = (shifted_time_vector > 0.1) & (shifted_time_vector < end_time) # difference with Nathan's code, constant is 0.0001, end_time is also 2 or 1.8
+		# TODO the big criterion to automate, we need to make sure to select time indices that do exist!
+		time_indices_to_include = (shifted_time_vector > 0.0001) & (shifted_time_vector < end_time)
 		active_current_ua = self.full_active_current_ua[:, time_indices_to_include]
 		return_current_ua = self.full_return_current_ua[:, time_indices_to_include]
 		time_vector = shifted_time_vector[time_indices_to_include]
 
+		# Time averaging in the frame of interest. If time_dynamics is enabled, the averaging occurs 
+		# for time_resolution provided, if time_averaging is enabled, averaging happens for the pulse duration. 
 		active_current_ua = (active_current_ua[:, :-1] + active_current_ua[:, 1:]) / 2
 		return_current_ua = (return_current_ua[:, :-1] + return_current_ua[:, 1:]) / 2
 		Td = time_vector[1:] - time_vector[:-1]
@@ -160,7 +191,8 @@ class PostProcessStage(CommonRunStage):
 				pbar_z.set_description(f'Processing Z-slice: {1 + z_index} of time point {idx_time + 1}/{total_time}')
 				pbar_z.update(1)
 				sleep(0.1)
-				# Potential computations
+				
+				# Actual computations for the XY potential at a given z-height
 				V_elem_act = np.interp(self.dist_elem, self.active_x, self.active_voltage_mv[z_index, :])
 				V_elem_ret = np.interp(self.dist_elem, self.return_x, self.return_voltage_mv[z_index, :])
 
