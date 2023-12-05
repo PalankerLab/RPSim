@@ -57,7 +57,7 @@ class PostProcessStage(CommonRunStage):
 		if Configuration().params["model"] == Models.MONOPOLAR.value:
 			
 			# TODO rename into more meaningful variable names
-			V_dict = np.loadtxt(Configuration().params["r_matrix_input_file_EP_return_2D"], delimiter=',')  # mV
+			V_dict = np.loadtxt(Configuration().params["r_matrix_input_file_EP_return_2D"], delimiter=',')  # mV  actually return_2D-whole
 			self.x_frame = V_dict[0,:]
 			self.y_frame = V_dict[1,:]
 			self.V_dict_ret = V_dict[2:, :]
@@ -108,6 +108,18 @@ class PostProcessStage(CommonRunStage):
 			# Va_time = np.zeros([len(times), N_pixels])
 			# Vr_time = np.zeros([len(times), N_pixels])
 
+	def _generate_potential_matrix_per_time_section_monopolar(self, start_time, idx_time, total_time, average_over_pulse_duration=True):
+		"""
+		Handles the time analysis for monopolar configuration.
+			Parameters:
+				start_time: 
+				idx_time (int): the current time slice used for the progress bar
+				total_time (int): the total number of time slice to analyze for the progress bar 
+				average_over_pulse_duration (bool): For averaging or not
+		"""
+		# TODO
+		pass 
+	
 	def _generate_potential_matrix_per_time_section(self, start_time, idx_time, total_time, average_over_pulse_duration=True):
 		"""
 		Handles the time analysis for bipolar configuration.
@@ -126,7 +138,7 @@ class PostProcessStage(CommonRunStage):
 		end_time = self.averaging_resolution_ms if average_over_pulse_duration else 0.12		
 		
 		# filter the time indices that correspond to the current time window
-		time_indices_to_include = (shifted_time_vector > 0.1) & (shifted_time_vector < end_time)
+		time_indices_to_include = (shifted_time_vector > 0.1) & (shifted_time_vector < end_time) # difference with Nathan's code, constant is 0.0001, end_time is also 2 or 1.8
 		active_current_ua = self.full_active_current_ua[:, time_indices_to_include]
 		return_current_ua = self.full_return_current_ua[:, time_indices_to_include]
 		time_vector = shifted_time_vector[time_indices_to_include]
@@ -268,6 +280,8 @@ class PostProcessStage(CommonRunStage):
 			# define end time based on whether we average over the pulse duration or not
 			end_time = self.pulse_duration if self.average_over_pulse_duration else 0.12
 			
+			# Initialize the distance matrices
+			# TODO We can probably reuse this block as it looks the same from the bipolar initialization (except for step = 4)
 			XX, YY = np.meshgrid(self.x_frame, self.y_frame)
 			XX_elem = np.zeros([self.x_frame.size * self.y_frame.size, self.number_of_pixels])
 			YY_elem = np.zeros([self.x_frame.size * self.y_frame.size, self.number_of_pixels])
@@ -277,21 +291,25 @@ class PostProcessStage(CommonRunStage):
 
 			dist_elem = np.sqrt(XX_elem ** 2 + YY_elem ** 2)
 
+			# Load the active and return currents out of pixel from the simulation stage 
 			I_act_t = np.array([self.simulation_stage_output[f'VCProbe{x + 1}'] for x in range(self.number_of_pixels)]) * 1E6  # uA
 			I_ret_t = np.array(self.simulation_stage_output[f'VCProbe{0}']) * 1E6  # uA
 
-			T = self.simulation_stage_output['time'] * 1E3 - self.start_time_ms
-			t_idx = (T > 0.1) & (T < self.pulse_duration)
+			# Selecting the right times indices 
+			T = self.simulation_stage_output['time'] * 1E3 - self.start_time_ms # Difference with Nathan's code is start_time_ms = 666
+			t_idx = (T > 0.1) & (T < self.pulse_duration) # In Nathan's bipolar it's 0.0001 
 			I_act = I_act_t[:, t_idx]
 			I_ret = I_ret_t[t_idx]
 			T = T[t_idx]
 
+			# TODO figure out what that block is doing
 			I_act = (I_act[:, :-1] + I_act[:, 1:]) / 2
 			I_ret = (I_ret[:-1] + I_ret[1:]) / 2
 			Td = T[1:] - T[:-1]
 			I_act = np.sum(I_act * Td, axis=1) / np.sum(Td)
 			I_ret = np.sum(I_ret * Td) / np.sum(Td)
 
+			# Iterate from 0 (the pixels) to 159 um into the retina by default
 			self.z_values = [x*1 for x in range(160)]
 			voltage_3d_matrix = np.zeros(XX.shape + (len(self.z_values),))
 
@@ -303,6 +321,7 @@ class PostProcessStage(CommonRunStage):
 					pbar_z.update(1)
 					sleep(0.1)
 					
+					# TODO figure out the computations' core
 					V_elem_act = np.interp(dist_elem, self.active_x, self.active_voltage_mv[z_idx, :])
 					V_ret = self.V_dict_ret[(z_idx) * self.x_frame.size: (z_idx + 1) * self.x_frame.size, :]
 
