@@ -54,6 +54,9 @@ class CurrentSequenceStage(CommonRunStage):
 		self.script = list()
 		self.max_photo_current_in_ua = None
 
+		# Variable used for plotting the most illuminated pixel at the end of the run
+		self.most_illuminated_pixels = dict()
+
 	@property
 	def stage_name(self):
 		return RunStages.current_sequence.name
@@ -108,6 +111,7 @@ class CurrentSequenceStage(CommonRunStage):
 
 				# fill in the photo-current of each pixel for each sub frame
 				light_on_pixels = img2pixel(image, self.image_label)
+				self.add_most_illuminated_pixel(light_on_pixels)
 				for pixel_idx in range(self.number_of_pixels):
 					self.video_sequence['Frames'][pixel_idx][frame_idx][sub_frame_idx] = light_on_pixels[
 						pixel_idx] * self.max_photo_current_in_ua
@@ -120,7 +124,7 @@ class CurrentSequenceStage(CommonRunStage):
 
 		self.gif_time = [x * 10 for x in self.gif_time]
 
-		return [self.video_sequence, {"gif_data": self.gif_image, "gif_time": self.gif_time}, self.image_sequence_input_folder]
+		return [self.video_sequence, {"gif_data": self.gif_image, "gif_time": self.gif_time}, self.determine_most_illuminated(), self.image_sequence_input_folder]
 	
 	def _parse_script_file(self):
 		"""
@@ -147,4 +151,33 @@ class CurrentSequenceStage(CommonRunStage):
 		# Removes the row containing the column names (i.e. Frame 'Repetition', 'Subframe1', ..., 'SubframeN')
 		if not self.is_generated:
 			self.script = self.script[1:]
+
+	def add_most_illuminated_pixel(self, light_on_pixels):
+		"""
+		This function fills the dictionary of the most illuminated pixel per subframe. 
+		It is used at the end of the run for plotting purposes.  
+
+		Params:
+			light_on_pixels (np.array): contains the light on each pixel for one subframe
+		"""
+
+		idx, val = np.argmax(light_on_pixels) + 1, np.max(light_on_pixels)
+		if idx in self.most_illuminated_pixels:
+			self.most_illuminated_pixels[idx] += val
+		else:
+			self.most_illuminated_pixels[idx] = val
+		
+	def determine_most_illuminated(self):
+		"""
+		This function determines which pixels received the most amount of light across all subframes and frames. 
+		It is used at the end of the run for plotting purposes.  
+
+		Return: 
+			index of the most illuminated pixel corresponding to the pixel label files
+		"""
+		
+		# Return the dict key of the entry having the maximum value (i.e. the most illuminated pixel)
+		idx_most = max(self.most_illuminated_pixels, key=self.most_illuminated_pixels.get)
+		return idx_most
+
 

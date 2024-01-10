@@ -64,7 +64,7 @@ class RunManager:
 		elif stage == RunStages.resistive_mesh.name:
 			stage_data = ResistiveMeshStage, [Configuration().params["r_matrix_output_file"]], ""
 		elif stage == RunStages.current_sequence.name:
-			stage_data = CurrentSequenceStage, ["video_sequence.pkl", "video_sequence.gif"], Configuration().params["video_sequence_name"]
+			stage_data = CurrentSequenceStage, ["video_sequence.pkl", "video_sequence.gif", "most_illuminated_pixel.pkl"], Configuration().params["video_sequence_name"]
 		elif stage == RunStages.circuit.name:
 			stage_data = CircuitStage, ["netlist.sp"], ""
 		elif stage == RunStages.simulation.name:
