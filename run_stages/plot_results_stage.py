@@ -132,10 +132,9 @@ class PlotResultsStage(CommonRunStage):
 		patches = [mpatches.Patch(color=colors[i], label=labels[i] ) for i in range(len(labels)) ]
 		
 		# Plot the image and legend
-		fig3 = plt.figure(figsize=(7,4)) # Plotting a legend outside of the box and saving the image is not straightforward, because the figure that was created do not take into account the outside legend. Hence the big floating space around
+		fig = plt.figure(figsize=(7,4)) # Plotting a legend outside of the box and saving the image is not straightforward, because the figure that was created do not take into account the outside legend. Hence the big floating space around
 		plt.imshow(image)
 		plt.legend(handles=patches, bbox_to_anchor=(1.05, 0.5), loc= "center left", borderaxespad=0. )
 
-		
-		return fig3
+		return fig
 
