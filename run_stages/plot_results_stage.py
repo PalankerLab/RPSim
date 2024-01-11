@@ -103,8 +103,7 @@ class PlotResultsStage(CommonRunStage):
 			edge (int): The label of an edge pixel
 			most (int): The label of the most illuminated pixel
 		Return 
-			image (Numpy array (x, x, 4)): an RGBA array representing the the electrodes positions
-			patches (matplotlib.patches): the legend handles
+			figure (plt.fig)
 		"""
 		
 		# Locate all the relevant positions

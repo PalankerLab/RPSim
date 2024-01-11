@@ -47,6 +47,12 @@ def int_sq(x, v_in):
 def img2pixel(img_in, label):
     """
     This function converts the projection image to the relative light flux on each pixel
+    Params:
+        img_in (Numpy.array (M,N,3)): A 3 channels numpy array containing the subframe to project
+        label (Numpy.array (M,N)): A 1 channel numpy array containing the photodiode location of each pixel
+                                    each pixel's photodiode is encoded by the same integer, the pixel's label
+    Return
+        A 1-D array, each entry contains the light on a single pixel
     """
     # convert to grayscale
     img = img_in[:, :, 0] * 0.2989 + img_in[:, :, 1] * 0.5870 + img_in[:, :, 2] * 0.1141
@@ -56,6 +62,8 @@ def img2pixel(img_in, label):
     light_on_pixels = np.zeros(N_pixels)
     for kk in range(N_pixels):
         # label is the segmentation bitmap of all pixels
+        # (label == kk+1) is a mask selecting the photodiode of single pixel 
+        # The mask is applied to the incoming image and the brightness is averaged
         light_on_pixels[kk] = np.mean(img[label == kk+1])
 
     return np.round(light_on_pixels/255, decimals=6).tolist()
