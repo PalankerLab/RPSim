@@ -72,29 +72,25 @@ class PostProcessStage(CommonRunStage):
 		
 		if Configuration().params["model"] == Models.MONOPOLAR.value:
 			
-			# TODO rename into more meaningful variable names
+			# Load voltages and correct dimensions of the implant
 			V_dict = np.loadtxt(Configuration().params["r_matrix_input_file_EP_return_2D"], delimiter=',')  # mV  actually return_2D-whole
 			self.x_frame = V_dict[0,:]
 			self.y_frame = V_dict[1,:]
 			self.V_dict_ret = V_dict[2:, :]
+
+			# Load the currents for all time points
+			self.full_active_current_ua = np.array([self.simulation_stage_output[f'VCProbe{x + 1}'] for x in range(self.number_of_pixels)]) * 1E6 
+			self.full_return_current_ua = np.array(self.simulation_stage_output[f'VCProbe{0}']) * 1E6 
+			# Convert the monopolar currents to a 2D array for compatibility with bipolar configuration - shape (1, nb_time_points)
+			self.full_return_current_ua = np.reshape(self.full_return_current_ua, (1,-1))
 
 		if Configuration().params["model"] == Models.BIPOLAR.value:
 			
 			# populate arrays with simulation values
 			self.full_active_current_ua = np.array([self.simulation_stage_output[f'VCProbe{x + 1}'] for x in range(self.number_of_pixels)]) * 1E6
 			self.full_return_current_ua = np.array([self.simulation_stage_output[f'VrCProbe{x + 1}'] for x in range(self.number_of_pixels)]) * 1E6
-
-			# get the interpolated currents for time dynamics analysis
-			if not self.average_over_pulse_duration:
-				# Initialize
-				self.interpolated_active_current_ua = None
-				self.interpolated_return_current_ua = None
-				self.interpolated_pulse_time_ms = None
-				# Compute
-				self._interpolate_currents()
 	
 			# load all needed COMSOL files
-
 			return_results = np.loadtxt(Configuration().params["r_matrix_input_file_return"], delimiter=',')
 			self.return_x = return_results[0, :]
 			self.return_voltage_mv = return_results[1:, :]
@@ -109,19 +105,28 @@ class PostProcessStage(CommonRunStage):
 			self.x_frame = np.arange(start=-frame_width, stop=frame_width + 1, step=4)
 			self.y_frame = np.arange(start=-frame_width, stop=frame_width + 1, step=4)
 
-			self.xx, self.yy = np.meshgrid(self.x_frame, self.y_frame)
-			self.xxx, self.yyy, self.zzz = np.meshgrid(self.x_frame, self.y_frame, self.z_values)
+		##### Parameters common to bipolar and monopolar configurations ####
+			
+		self.xx, self.yy = np.meshgrid(self.x_frame, self.y_frame)
+		# The 3D mesh is not being used anymore, but I left the line of code just in case
+		#self.xxx, self.yyy, self.zzz = np.meshgrid(self.x_frame, self.y_frame, self.z_values) 
 
-			self.xx_element = np.zeros([self.x_frame.size * self.y_frame.size, self.number_of_pixels])
-			self.yy_element = np.zeros([self.x_frame.size * self.y_frame.size, self.number_of_pixels])
-			for kk in range(self.number_of_pixels):
-				self.xx_element[:, kk] = np.abs(self.xx.flatten() - self.pixel_coordinates[kk, 0])
-				self.yy_element[:, kk] = np.abs(self.yy.flatten() - self.pixel_coordinates[kk, 1])
+		self.xx_element = np.zeros([self.x_frame.size * self.y_frame.size, self.number_of_pixels])
+		self.yy_element = np.zeros([self.x_frame.size * self.y_frame.size, self.number_of_pixels])
+		for kk in range(self.number_of_pixels):
+			self.xx_element[:, kk] = np.abs(self.xx.flatten() - self.pixel_coordinates[kk, 0])
+			self.yy_element[:, kk] = np.abs(self.yy.flatten() - self.pixel_coordinates[kk, 1])
 
-			self.dist_elem = np.sqrt(self.xx_element ** 2 + self.yy_element ** 2)
+		self.dist_elem = np.sqrt(self.xx_element ** 2 + self.yy_element ** 2)
 
-			# Va_time = np.zeros([len(times), N_pixels])
-			# Vr_time = np.zeros([len(times), N_pixels])
+		# get the interpolated currents for time dynamics analysis
+		if not self.average_over_pulse_duration:
+			# Initialize
+			#self.interpolated_active_current_ua = None
+			#self.interpolated_return_current_ua = None
+			#self.interpolated_pulse_time_ms = None
+			# Compute
+			self._interpolate_currents()
 
 	def _determine_start_pulse(sefl):
 		"""
@@ -189,16 +194,19 @@ class PostProcessStage(CommonRunStage):
 		active_current_ua = self.full_active_current_ua[:, pulse_mask]
 		return_current_ua = self.full_return_current_ua[:, pulse_mask]
 		
-		# Prepare empty arrays for results
-		nb_pixels, nb_time_points = active_current_ua.shape[0], self.interpolated_pulse_time_ms.shape[0]
-		self.interpolated_active_current_ua = np.zeros((nb_pixels, nb_time_points))
-		self.interpolated_return_current_ua = np.zeros((nb_pixels, nb_time_points))
+		# Prepare empty arrays for results		
+		nb_pixels_active, nb_pixels_return, nb_time_points = active_current_ua.shape[0], return_current_ua.shape[0], self.interpolated_pulse_time_ms.shape[0]
+		self.interpolated_active_current_ua = np.zeros((nb_pixels_active, nb_time_points))
+		self.interpolated_return_current_ua = np.zeros((nb_pixels_return, nb_time_points))
 
 		# TODO It is inefficient to use for loop on Numpy arrays, but this is the best I've found so far
-		for pixel in range(nb_pixels):
+		for pixel in range(nb_pixels_active):
 			# Interpolate the currents of the given pixel
-			self.interpolated_active_current_ua[pixel] = np.interp(self.interpolated_pulse_time_ms, pulse_time, active_current_ua[pixel, :])
-			self.interpolated_return_current_ua[pixel] = np.interp(self.interpolated_pulse_time_ms, pulse_time, return_current_ua[pixel, :])
+			self.interpolated_active_current_ua[pixel, :] = np.interp(self.interpolated_pulse_time_ms, pulse_time, active_current_ua[pixel, :])
+		# In case we have a different number of pixels for active and return beside the monopolar case
+		for pixel in range(nb_pixels_return):	
+			self.interpolated_return_current_ua[pixel, :] = np.interp(self.interpolated_pulse_time_ms, pulse_time, return_current_ua[pixel, :])
+
 						
 	def _get_currents_for_time_averaging(self, start_time, end_time):
 		"""
@@ -226,7 +234,7 @@ class PostProcessStage(CommonRunStage):
 		time_indices_to_include = (shifted_time_vector > 1e-6) & (shifted_time_vector < end_time)
 		time_vector = shifted_time_vector[time_indices_to_include]
 		
-		# Get the correct currents depending on the analysis
+		# Get the correct currents depending on the time analysis
 		if self.average_over_pulse_duration:
 			active_current_ua = self.full_active_current_ua[:, time_indices_to_include]
 			return_current_ua = self.full_return_current_ua[:, time_indices_to_include]
@@ -247,7 +255,47 @@ class PostProcessStage(CommonRunStage):
 				average_over_pulse_duration (bool): For averaging or not
 		"""
 		# TODO
-		pass 
+		pass
+
+	def _compute_synthesis_2D(self, active_current_ua, return_current_ua, z_index):
+		"""
+		This function computes the 2D (XY-plane) voltages at a cerain depth/z-height for a given time
+		section, based on the time averaged currents for that given time section, outputed by Xyce per pixel. 
+		These computations are specific to a either a bipolar or monopolar pixel configuration. 
+	
+		Params:
+			active_currents_ua (Numpy.array (nb_pixels_active,)): The time averaged active currents for the given time section
+			return_currents_ua (Numpy.array (nb_pixels_return,)): The time averaged return currents for the given time section
+			z_index (int): The index of the depth at which we are working in the retina
+		
+		Returns:
+			voltage_xy_matrix (Numpy.array (?, ?)): The 2D voltage map for the given z and t slices
+		"""
+			
+		if Configuration().params["model"] == Models.MONOPOLAR.value:
+			# Actual computations forthe XY potential at a a given z-height
+			V_elem_act = np.interp(self.dist_elem, self.active_x, self.active_voltage_mv[z_index, :])
+			V_ret = self.V_dict_ret[(z_index) * self.x_frame.size: (z_index + 1) * self.x_frame.size, :]
+
+			voltage_xy_matrix = np.matmul(V_elem_act, active_current_ua)
+			# The return currents are reshaped again into a 1D array TODO check if precision is lost through the reshapes
+			voltage_xy_matrix = np.reshape(voltage_xy_matrix, self.xx.shape) + V_ret * np.reshape(return_current_ua, (-1,))
+		
+		if Configuration().params["model"] == Models.BIPOLAR.value:
+			# Actual computations for the XY potential at a given z-height
+			V_elem_act = np.interp(self.dist_elem, self.active_x, self.active_voltage_mv[z_index, :])
+			V_elem_ret = np.interp(self.dist_elem, self.return_x, self.return_voltage_mv[z_index, :])
+
+			V_near = self.return_near_voltage_mv[(z_index) * self.x_return_near.size: (z_index + 1) * self.x_return_near.size, :]
+			myfun = interpolate.RectBivariateSpline(self.x_return_near, self.y_return_near, V_near.T)
+
+			idx_near = (self.xx_element < np.max(self.x_return_near)) & (self.yy_element < np.max(self.y_return_near))
+			V_elem_ret[idx_near] = myfun.ev(self.xx_element[idx_near], self.yy_element[idx_near])
+
+			voltage_xy_matrix = np.matmul(V_elem_act, active_current_ua) + np.matmul(V_elem_ret, return_current_ua)
+			voltage_xy_matrix = np.reshape(voltage_xy_matrix, self.xx.shape)
+		
+		return voltage_xy_matrix 
 	
 	def _generate_potential_matrix_per_time_section(self, start_time, idx_time, total_time):
 		"""
@@ -300,31 +348,18 @@ class PostProcessStage(CommonRunStage):
 		# initialize output structure for this time point
 		voltage_3d_matrix = np.zeros(self.xx.shape + (len(self.z_values),))
 
-		# Calculate potential matrix for each z value in this time window
-		# tqdm is used to generate a progress bar
-		with tqdm(total = len(self.z_values), file = sys.stdout) as pbar_z:
+		### Core loop for iterating over the z-slices (retina's depth) ###
+		with tqdm(total = len(self.z_values), file = sys.stdout) as pbar_z: # used for PROGRESS BAR
 			for z_index, z_value in enumerate(self.z_values):
 				# Progress bar 
 				pbar_z.set_description(f'Processing Z-slice: {1 + z_index} of time point {idx_time + 1}/{total_time}')
 				pbar_z.update(1)
 				sleep(0.1)
 				
-				# Actual computations for the XY potential at a given z-height
-				V_elem_act = np.interp(self.dist_elem, self.active_x, self.active_voltage_mv[z_index, :])
-				V_elem_ret = np.interp(self.dist_elem, self.return_x, self.return_voltage_mv[z_index, :])
-
-				V_near = self.return_near_voltage_mv[(z_index) * self.x_return_near.size: (z_index + 1) * self.x_return_near.size, :]
-				myfun = interpolate.RectBivariateSpline(self.x_return_near, self.y_return_near, V_near.T)
-
-				idx_near = (self.xx_element < np.max(self.x_return_near)) & (self.yy_element < np.max(self.y_return_near))
-				V_elem_ret[idx_near] = myfun.ev(self.xx_element[idx_near], self.yy_element[idx_near])
-
-				voltage_xy_matrix = np.matmul(V_elem_act, active_current_ua) + np.matmul(V_elem_ret, return_current_ua)
-				voltage_xy_matrix = np.reshape(voltage_xy_matrix, self.xx.shape)
-
-				# update output structures
-				voltage_3d_matrix[:, :, z_index] = voltage_xy_matrix
-				#return start_time, voltage_3d_matrix
+				# Compute the voltages and update the output structures
+				voltage_3d_matrix[:, :, z_index] = self._compute_synthesis_2D(active_current_ua, 
+																              return_current_ua, 
+																			  z_index)
 
 		return voltage_3d_matrix
 
@@ -424,111 +459,184 @@ class PostProcessStage(CommonRunStage):
 		self._initialize_analysis_parameters()
 		# find the diodes that are on
 		on_diode_data_during_stable_pulse = self._extract_on_diode_pulses()
+		# Initialize output structures
+		voltage_4d_matrix = np.zeros(self.xx.shape + (len(self.z_values),) + (len(self.time_points_to_analyze_ms),))
+		output_dictionary = {"v(x,y,z,t)_mv": None,
+								"2d_mesh_um": (self.xx, self.yy),
+								"z_um": self.z_values,
+								"t_ms": self.time_points_to_analyze_ms,
+								"pixel_coordinates_um": self.pixel_coordinates,
+								"on_diode_data": on_diode_data_during_stable_pulse}
 
-		if Configuration().params["model"] == Models.MONOPOLAR.value:
+		### Core loop for iterating over the time sections ###
+		for time_point_index, time_point_value in enumerate(self.time_points_to_analyze_ms):
+			# calculate matrix for this time point
+			voltage_3d_matrix = self._generate_potential_matrix_per_time_section(start_time=time_point_value, \
+																				idx_time=time_point_index, total_time=len(self.time_points_to_analyze_ms))
+			# add result to output structure
+			voltage_4d_matrix[:, :, :, time_point_index] = voltage_3d_matrix
 
-			# define end time based on whether we average over the pulse duration or not
-			end_time = self.averaging_resolution_ms
+		# Save results
+		output_dictionary["v(x,y,z,t)_mv"] = voltage_4d_matrix	
+
+		# if Configuration().params["model"] == Models.MONOPOLAR.value:
+
+		# 	# define end time based on whether we average over the pulse duration or not
+		# 	end_time = self.averaging_resolution_ms
 			
-			# Initialize the distance matrices
-			# TODO We can probably reuse this block as it looks the same from the bipolar initialization (except for step = 4)
-			XX, YY = np.meshgrid(self.x_frame, self.y_frame)
-			XX_elem = np.zeros([self.x_frame.size * self.y_frame.size, self.number_of_pixels])
-			YY_elem = np.zeros([self.x_frame.size * self.y_frame.size, self.number_of_pixels])
-			for kk in range(self.number_of_pixels):
-				XX_elem[:, kk] = np.abs(XX.flatten() - self.pixel_coordinates[kk, 0])
-				YY_elem[:, kk] = np.abs(YY.flatten() - self.pixel_coordinates[kk, 1])
+		# 	# Initialize the distance matrices
+		# 	# TODO We can probably reuse this block as it looks the same from the bipolar initialization (except for step = 4)
+		# 	"""
+		# 	self.XX, self.YY = np.meshgrid(self.x_frame, self.y_frame)
 
-			dist_elem = np.sqrt(XX_elem ** 2 + YY_elem ** 2)
+		# 	self.XX_elem = np.zeros([self.x_frame.size * self.y_frame.size, self.number_of_pixels])
+		# 	self.YY_elem = np.zeros([self.x_frame.size * self.y_frame.size, self.number_of_pixels])
+		# 	for kk in range(self.number_of_pixels):
+		# 		self.XX_elem[:, kk] = np.abs(self.XX.flatten() - self.pixel_coordinates[kk, 0])
+		# 		self.YY_elem[:, kk] = np.abs(self.YY.flatten() - self.pixel_coordinates[kk, 1])
 
-			# Load the active and return currents out of pixel from the simulation stage 
-			I_act_t = np.array([self.simulation_stage_output[f'VCProbe{x + 1}'] for x in range(self.number_of_pixels)]) * 1E6  # uA
-			I_ret_t = np.array(self.simulation_stage_output[f'VCProbe{0}']) * 1E6  # uA
+		# 	self.dist_elem = np.sqrt(self.XX_elem ** 2 + self.YY_elem ** 2)
+		# 	"""
+		# 	""" Old implementation 
+		# 	# Load the active and return currents out of pixel from the simulation stage 
+		# 	I_act_t = np.array([self.simulation_stage_output[f'VCProbe{x + 1}'] for x in range(self.number_of_pixels)]) * 1E6  # uA
+		# 	I_ret_t = np.array(self.simulation_stage_output[f'VCProbe{0}']) * 1E6  # uA
 
-			# Selecting the right times indices 
-			T = self.simulation_stage_output['time'] * 1E3 - self.pulse_start_time_ms # Difference with Nathan's code is pulse_start_time_ms = 666
-			t_idx = (T > 0.1) & (T < self.pulse_duration_ms) # In Nathan's bipolar it's 0.0001 
-			I_act = I_act_t[:, t_idx]
-			I_ret = I_ret_t[t_idx]
-			T = T[t_idx]
+		# 	# Selecting the right times indices 
+		# 	T = self.simulation_stage_output['time'] * 1E3 - self.pulse_start_time_ms # Difference with Nathan's code is pulse_start_time_ms = 666
+		# 	t_idx = (T > 0.1) & (T < self.pulse_duration_ms) # In Nathan's bipolar it's 0.0001 
+		# 	I_act = I_act_t[:, t_idx]
+		# 	I_ret = I_ret_t[t_idx]
+		# 	T = T[t_idx]
 
-			# TODO figure out what that block is doing
-			I_act = (I_act[:, :-1] + I_act[:, 1:]) / 2
-			I_ret = (I_ret[:-1] + I_ret[1:]) / 2
-			Td = T[1:] - T[:-1]
-			I_act = np.sum(I_act * Td, axis=1) / np.sum(Td)
-			I_ret = np.sum(I_ret * Td) / np.sum(Td)
+		# 	# TODO figure out what that block is doing
+		# 	I_act = (I_act[:, :-1] + I_act[:, 1:]) / 2
+		# 	I_ret = (I_ret[:-1] + I_ret[1:]) / 2
+		# 	Td = T[1:] - T[:-1]
+		# 	I_act = np.sum(I_act * Td, axis=1) / np.sum(Td)
+		# 	I_ret = np.sum(I_ret * Td) / np.sum(Td)
 
-			# Iterate from 0 (the pixels) to 159 um into the retina by default
-			#self.z_values = [x*1 for x in range(160)]
-			voltage_3d_matrix = np.zeros(XX.shape + (len(self.z_values),))
+		# 	# Iterate from 0 (the pixels) to 159 um into the retina by default
+		# 	#self.z_values = [x*1 for x in range(160)]
+		# 	voltage_3d_matrix = np.zeros(XX.shape + (len(self.z_values),)) """
 
-			# create voltage x-y matrix for each z plane
-			with tqdm(total = len(self.z_values), file = sys.stdout) as pbar_z:
-				for z_idx in range(len(self.z_values)):
-					# Progress bar monopoalr 
-					pbar_z.set_description(f'Processing z-slice: {1 + z_idx}')
-					pbar_z.update(1)
-					sleep(0.1)
-					
-					# TODO figure out the computations' core
-					V_elem_act = np.interp(dist_elem, self.active_x, self.active_voltage_mv[z_idx, :])
-					V_ret = self.V_dict_ret[(z_idx) * self.x_frame.size: (z_idx + 1) * self.x_frame.size, :]
+		# 	""" New implementation """
+		# 	active_current_ua = np.array([self.simulation_stage_output[f'VCProbe{x + 1}'] for x in range(self.number_of_pixels)]) * 1E6 
+		# 	return_current_ua = np.array(self.simulation_stage_output[f'VCProbe{0}']) * 1E6 
 
-					V = np.matmul(V_elem_act, I_act)
-					V = np.reshape(V, XX.shape) + V_ret * I_ret
+		# 	# Where I will have to implement time dynamics
+		# 	shifted_time_vector = self.simulation_stage_output['time'] * 1E3 - self.pulse_start_time_ms 
+		# 	time_indices_to_include = (shifted_time_vector > 1e-6) & (shifted_time_vector < self.pulse_duration_ms)
+		# 	active_current_ua = active_current_ua[:, time_indices_to_include]
+		# 	return_current_ua = return_current_ua[time_indices_to_include] # This is a 1D vector, main difference with bipolar configuration!
+		# 	time_vector = shifted_time_vector[time_indices_to_include]
+		# 	#T = T[t_idx]
 
-					voltage_3d_matrix[:, :, z_idx] = V
+		# 	# TODO figure out what that block is doing
+		# 	active_current_ua = (active_current_ua[:, :-1] + active_current_ua[:, 1:]) / 2
+		# 	return_current_ua = (return_current_ua[:-1] + return_current_ua[1:]) / 2
+		# 	Td = time_vector[1:] - time_vector[:-1]
+		# 	active_current_ua = np.sum(active_current_ua * Td, axis=1) / np.sum(Td)
+		# 	return_current_ua = np.sum(return_current_ua * Td) / np.sum(Td)
 
-			# initialize return structures
-			voltage_4d_matrix = np.zeros(XX.shape + (len(self.z_values),) + (1,))
+		# 	voltage_3d_matrix = np.zeros(self.xx.shape + (len(self.z_values),))
 
-			voltage_4d_matrix[:, :, :, 0] = voltage_3d_matrix
+		# 	""" End modifications """
+		# 	# create voltage x-y matrix for each z plane
+		# 	with tqdm(total = len(self.z_values), file = sys.stdout) as pbar_z:
+		# 		for z_idx in range(len(self.z_values)):
+		# 			# Progress bar monopoalr 
+		# 			pbar_z.set_description(f'Processing z-slice: {1 + z_idx}')
+		# 			pbar_z.update(1)
+		# 			sleep(0.1)
 
-			output_dictionary = {"v(x,y,z,t)_mv": voltage_4d_matrix,
-								 "2d_mesh_um": (XX, YY),
-								 "3d_mesh_um": None,
-								 "z_um": self.z_values,
-								 "t_ms": [0],
-								 "pixel_coordinates_um": self.pixel_coordinates,
-								 "on_diode_data": on_diode_data_during_stable_pulse}
-			#frame_width = self.x_frame.size
-			frame_width = abs(self.x_frame[0])
+		# 			""" Old implementation 
+		# 			# TODO figure out the computations' core
+		# 			V_elem_act = np.interp(dist_elem, self.active_x, self.active_voltage_mv[z_idx, :])
+		# 			V_ret = self.V_dict_ret[(z_idx) * self.x_frame.size: (z_idx + 1) * self.x_frame.size, :]
 
-		################################# BIPOLAR MODE #################################
+		# 			V = np.matmul(V_elem_act, I_act)
+		# 			V = np.reshape(V, XX.shape) + V_ret * I_ret
+
+		# 			voltage_3d_matrix[:, :, z_idx] = V """	
+
+		# 			""" Modifications """
+		# 			V_elem_act = np.interp(self.dist_elem, self.active_x, self.active_voltage_mv[z_idx, :])
+		# 			V_ret = self.V_dict_ret[(z_idx) * self.x_frame.size: (z_idx + 1) * self.x_frame.size, :]
+
+		# 			voltage_xy_matrix = np.matmul(V_elem_act, active_current_ua)
+		# 			voltage_xy_matrix = np.reshape(voltage_xy_matrix, self.xx.shape) + V_ret * return_current_ua
+
+		# 			voltage_3d_matrix[:, :, z_idx] = voltage_xy_matrix
+
+		# 	# initialize return structures
+		# 	voltage_4d_matrix = np.zeros(self.xx.shape + (len(self.z_values),) + (1,))
+
+		# 	voltage_4d_matrix[:, :, :, 0] = voltage_3d_matrix
+
+		# 	output_dictionary = {"v(x,y,z,t)_mv": voltage_4d_matrix,
+		# 						 "2d_mesh_um": (self.xx, self.yy),
+		# 						 "z_um": self.z_values,
+		# 						 "t_ms": [0],
+		# 						 "pixel_coordinates_um": self.pixel_coordinates,
+		# 						 "on_diode_data": on_diode_data_during_stable_pulse}
+		# 	#frame_width = self.x_frame.size
+		# 	frame_width = abs(self.x_frame[0])
+
+
+		# 	""" New time dynamics """
+		# 	voltage_4d_matrix = np.zeros(self.xx.shape + (len(self.z_values),) + (len(self.time_points_to_analyze_ms),))
+
+		# 	output_dictionary = {"v(x,y,z,t)_mv": None,
+		# 							"2d_mesh_um": (self.xx, self.yy),
+		# 							"z_um": self.z_values,
+		# 							"t_ms": self.time_points_to_analyze_ms,
+		# 							"pixel_coordinates_um": self.pixel_coordinates,
+		# 							"on_diode_data": on_diode_data_during_stable_pulse}
+
+		# 	for time_point_index, time_point_value in enumerate(self.time_points_to_analyze_ms):
+		# 		# calculate matrix for this time point
+		# 		voltage_3d_matrix = self._generate_potential_matrix_per_time_section(start_time=time_point_value, \
+		# 																			idx_time=time_point_index, total_time=len(self.time_points_to_analyze_ms))
+		# 		# add result to output structure
+		# 		voltage_4d_matrix[:, :, :, time_point_index] = voltage_3d_matrix
+
+		# 	# prepare output
+		# 	output_dictionary["v(x,y,z,t)_mv"] = voltage_4d_matrix			
+
+		# ################################# BIPOLAR MODE #################################
 		
-		if Configuration().params["model"] == Models.BIPOLAR.value:
+		# if Configuration().params["model"] == Models.BIPOLAR.value:
 
-			# initialize return structures
-			voltage_4d_matrix = np.zeros(self.xx.shape + (len(self.z_values),) + (len(self.time_points_to_analyze_ms),))
+		# 	# initialize return structures
+		# 	voltage_4d_matrix = np.zeros(self.xx.shape + (len(self.z_values),) + (len(self.time_points_to_analyze_ms),))
 
-			output_dictionary = {"v(x,y,z,t)_mv": None,
-									"2d_mesh_um": (self.xx, self.yy),
-									"3d_mesh_um": (self.xxx, self.yyy, self.zzz),
-									"z_um": self.z_values,
-									"t_ms": self.time_points_to_analyze_ms,
-									"pixel_coordinates_um": self.pixel_coordinates,
-									"on_diode_data": on_diode_data_during_stable_pulse}
+		# 	output_dictionary = {"v(x,y,z,t)_mv": None,
+		# 							"2d_mesh_um": (self.xx, self.yy),
+		# 							"z_um": self.z_values,
+		# 							"t_ms": self.time_points_to_analyze_ms,
+		# 							"pixel_coordinates_um": self.pixel_coordinates,
+		# 							"on_diode_data": on_diode_data_during_stable_pulse}
 			
-			# # run post-processing concurrently for all the time points
-			# with Pool(multiprocessing.cpu_count()//3) as pool:
-			# 	results = pool.map(self._generate_potential_matrix_per_time_section, self.time_points_to_analyze_ms)
-			#
-			# for result in results:
-			# 	voltage_4d_matrix[:, :, :, self.time_points_to_analyze_ms.index(result[0])] = result[1]
+		# 	# # run post-processing concurrently for all the time points
+		# 	# with Pool(multiprocessing.cpu_count()//3) as pool:
+		# 	# 	results = pool.map(self._generate_potential_matrix_per_time_section, self.time_points_to_analyze_ms)
+		# 	#
+		# 	# for result in results:
+		# 	# 	voltage_4d_matrix[:, :, :, self.time_points_to_analyze_ms.index(result[0])] = result[1]
 
-			# iterate over time and create 3D potential matrix for each time point
-			for time_point_index, time_point_value in enumerate(self.time_points_to_analyze_ms):
-				# calculate matrix for this time point
-				voltage_3d_matrix = self._generate_potential_matrix_per_time_section(start_time=time_point_value, \
-																					idx_time=time_point_index, total_time=len(self.time_points_to_analyze_ms))
-				# add result to output structure
-				voltage_4d_matrix[:, :, :, time_point_index] = voltage_3d_matrix
+		# 	# iterate over time and create 3D potential matrix for each time point
+		# 	for time_point_index, time_point_value in enumerate(self.time_points_to_analyze_ms):
+		# 		# calculate matrix for this time point
+		# 		voltage_3d_matrix = self._generate_potential_matrix_per_time_section(start_time=time_point_value, \
+		# 																			idx_time=time_point_index, total_time=len(self.time_points_to_analyze_ms))
+		# 		# add result to output structure
+		# 		voltage_4d_matrix[:, :, :, time_point_index] = voltage_3d_matrix
 
-			# prepare output
-			output_dictionary["v(x,y,z,t)_mv"] = voltage_4d_matrix
+		# 	# prepare output
+		# 	output_dictionary["v(x,y,z,t)_mv"] = voltage_4d_matrix
 
-			frame_width = Configuration().params["frame_width"]
+		# 	frame_width = Configuration().params["frame_width"]
 
 		# plot
 		figures = list()
