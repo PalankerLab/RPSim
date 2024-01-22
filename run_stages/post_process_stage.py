@@ -20,7 +20,8 @@ from run_stages.common_run_stage import CommonRunStage
 
 from tqdm import tqdm
 from time import sleep
-
+from multiprocessing.pool import Pool
+from multiprocessing import cpu_count
 
 class PostProcessStage(CommonRunStage):
 	"""
@@ -318,6 +319,50 @@ class PostProcessStage(CommonRunStage):
 		
 		return voltage_xy_matrix 
 	
+	def _compute_synthesis_2D_multi(self, args):
+		"""
+		This function computes the 2D (XY-plane) voltages at a cerain depth/z-height for a given time
+		section, based on the time averaged currents for that given time section, outputed by Xyce per pixel. 
+		These computations are specific to a either a bipolar or monopolar pixel configuration. 
+	
+		Params:
+			active_currents_ua (Numpy.array (nb_pixels_active,)): The time averaged active currents for the given time section
+			return_currents_ua (Numpy.array (nb_pixels_return,)): The time averaged return currents for the given time section
+			z_index (int): The index of the depth at which we are working in the retina
+		
+		Returns:
+			voltage_xy_matrix (Numpy.array (?, ?)): The 2D voltage map for the given z and t slices
+		"""
+			
+		active_current_ua = args[0]
+		return_current_ua = args[1]
+		z_index = args[2]
+		
+		if Configuration().params["model"] == Models.MONOPOLAR.value:
+			# Actual computations forthe XY potential at a a given z-height
+			V_elem_act = np.interp(self.dist_elem, self.active_x, self.active_voltage_mv[z_index, :])
+			V_ret = self.V_dict_ret[(z_index) * self.x_frame.size: (z_index + 1) * self.x_frame.size, :]
+
+			voltage_xy_matrix = np.matmul(V_elem_act, active_current_ua)
+			# The return currents are reshaped again into a 1D array TODO check if precision is lost through the reshapes
+			voltage_xy_matrix = np.reshape(voltage_xy_matrix, self.xx.shape) + V_ret * np.reshape(return_current_ua, (-1,))
+		
+		if Configuration().params["model"] == Models.BIPOLAR.value:
+			# Actual computations for the XY potential at a given z-height
+			V_elem_act = np.interp(self.dist_elem, self.active_x, self.active_voltage_mv[z_index, :])
+			V_elem_ret = np.interp(self.dist_elem, self.return_x, self.return_voltage_mv[z_index, :])
+
+			V_near = self.return_near_voltage_mv[(z_index) * self.x_return_near.size: (z_index + 1) * self.x_return_near.size, :]
+			myfun = interpolate.RectBivariateSpline(self.x_return_near, self.y_return_near, V_near.T)
+
+			idx_near = (self.xx_element < np.max(self.x_return_near)) & (self.yy_element < np.max(self.y_return_near))
+			V_elem_ret[idx_near] = myfun.ev(self.xx_element[idx_near], self.yy_element[idx_near])
+
+			voltage_xy_matrix = np.matmul(V_elem_act, active_current_ua) + np.matmul(V_elem_ret, return_current_ua)
+			voltage_xy_matrix = np.reshape(voltage_xy_matrix, self.xx.shape)
+		
+		return voltage_xy_matrix, z_index
+	
 	def _generate_potential_matrix_per_time_section(self, start_time, idx_time, total_time):
 		"""
 		Handles the time analysis for bipolar configuration.
@@ -338,25 +383,43 @@ class PostProcessStage(CommonRunStage):
 			active_current_ua = (active_current_ua[:, :-1] + active_current_ua[:, 1:]) / 2
 			return_current_ua = (return_current_ua[:, :-1] + return_current_ua[:, 1:]) / 2
 			Td = time_vector[1:] - time_vector[:-1]
+		# TODO check the case when there is only one time point, how to define Td
 		active_current_ua = np.sum(active_current_ua * Td, axis=1) / np.sum(Td)
 		return_current_ua = np.sum(return_current_ua * Td, axis=1) / np.sum(Td)
 
 		# initialize output structure for this time point
 		voltage_3d_matrix = np.zeros(self.xx.shape + (len(self.z_values),))
 
-		### Core loop for iterating over the z-slices (retina's depth) ###
-		with tqdm(total = len(self.z_values), file = sys.stdout) as pbar_z: # used for PROGRESS BAR
-			for z_index, z_value in enumerate(self.z_values):
-				# Progress bar 
-				pbar_z.set_description(f'Processing Z-slice: {1 + z_index} of time point {idx_time + 1}/{total_time}')
-				pbar_z.update(1)
-				sleep(0.1)
-				
-				# Compute the voltages and update the output structures
-				voltage_3d_matrix[:, :, z_index] = self._compute_synthesis_2D(active_current_ua, 
-																              return_current_ua, 
-																			  z_index)
-
+		## Multiprocessing attempt - parallel computations of the z-slices ##
+		if Configuration().params["multiprocessing"]:
+		
+			# We parallelize synthesis to compute the 2D voltages at different height in parallel 
+			# First we generate a list of the z-slices we need to compute
+			multi_proc_points = [(active_current_ua, return_current_ua, z_index) for z_index, z_value in enumerate(self.z_values)]
+			
+			# Use 2/3 of the CPUs available
+			cpu_to_use = cpu_count() // 3 * 2 
+			#sys.setrecursionlimit(100000) # Trying to overcome the recursion limit
+			### Core loop for iterating over the z-slices (retina's depth) ###
+			with Pool(cpu_to_use) as pool:
+				# We map the z-index list with the compute_synthesis function
+				# The computations happen in parallel, and the results are stored in 
+				# series in an iterator/iterable
+				for voltage_2d_matrix, z_index in pool.map(self._compute_synthesis_2D_multi, multi_proc_points, chunksize=cpu_to_use):
+					# Iterate over the results in series and load the values 
+					voltage_3d_matrix[:, :, z_index] = voltage_2d_matrix
+		else:
+			with tqdm(total = len(self.z_values), file = sys.stdout) as pbar_z: # used for PROGRESS BAR
+				for z_index, z_value in enumerate(self.z_values):
+					# Progress bar 
+					pbar_z.set_description(f'Processing Z-slice: {1 + z_index} of time point {idx_time + 1}/{total_time}')
+					pbar_z.update(1)
+					sleep(0.1)
+					
+					# Compute the voltages and update the output structures
+					voltage_3d_matrix[:, :, z_index] = self._compute_synthesis_2D(active_current_ua, 
+																				return_current_ua, 
+																				z_index)
 		return voltage_3d_matrix
 
 	def _create_potential_plot_per_depth(self, array_to_plot, frame_width, z_index, z_value):
@@ -464,14 +527,30 @@ class PostProcessStage(CommonRunStage):
 								"pixel_coordinates_um": self.pixel_coordinates,
 								"on_diode_data": on_diode_data_during_stable_pulse}
 
-		### Core loop for iterating over the time sections ###
-		for time_point_index, time_point_value in enumerate(self.time_points_to_analyze_ms):
-			# calculate matrix for this time point
-			voltage_3d_matrix = self._generate_potential_matrix_per_time_section(start_time=time_point_value, \
-																				idx_time=time_point_index, total_time=len(self.time_points_to_analyze_ms))
-			# add result to output structure
-			voltage_4d_matrix[:, :, :, time_point_index] = voltage_3d_matrix
 
+		# Different progress bar whether we do multiprocessing or not
+		if Configuration().params["multiprocessing"]: 
+			with tqdm(total = len(self.time_points_to_analyze_ms), file = sys.stdout) as pbar_t: # used for PROGRESS BAR
+				### Core loop for iterating over the time sections ###	
+				for time_point_index, time_point_value in enumerate(self.time_points_to_analyze_ms):
+					# Progress bar 
+					pbar_t.set_description(f'Processing z-slices of time-point: {1 + time_point_index}/{len(self.time_points_to_analyze_ms)}...')
+					pbar_t.update(1)
+					sleep(0.1)
+					# calculate matrix for this time point
+					voltage_3d_matrix = self._generate_potential_matrix_per_time_section(start_time=time_point_value, \
+																						idx_time=time_point_index, total_time=len(self.time_points_to_analyze_ms))
+					# add result to output structure
+					voltage_4d_matrix[:, :, :, time_point_index] = voltage_3d_matrix
+
+		else:
+			for time_point_index, time_point_value in enumerate(self.time_points_to_analyze_ms):
+				# calculate matrix for this time point
+				voltage_3d_matrix = self._generate_potential_matrix_per_time_section(start_time=time_point_value, \
+																							idx_time=time_point_index, total_time=len(self.time_points_to_analyze_ms))
+				# add result to output structure
+				voltage_4d_matrix[:, :, :, time_point_index] = voltage_3d_matrix
+		
 		# Save results
 		output_dictionary["v(x,y,z,t)_mv"] = voltage_4d_matrix	
 
