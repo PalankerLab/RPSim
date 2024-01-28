@@ -70,7 +70,8 @@ class RunManager:
 		elif stage == RunStages.simulation.name:
 			stage_data = SimulationStage, ["simulation_results.pkl"], ""
 		elif stage == RunStages.post_process.name:
-			stage_data = PostProcessStage, ["4D_potential_matrix_with_time_and_coordinates.pkl"], RunStages.post_process.name
+			stage_data = PostProcessStage, ["{}.pkl".format(Configuration().params["video_sequence_name"])], \
+				RunStages.post_process.name
 		elif stage == RunStages.plot_results.name:
 			stage_data =  PlotResultsStage, ["diode_voltage_vs_time.png", "current_vs_time.png", "pixels_location.png", "on_diode_pulse.png"], ""
 		else:

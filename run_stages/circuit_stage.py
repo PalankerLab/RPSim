@@ -59,15 +59,15 @@ class CircuitStage(CommonRunStage):
 			else (np.sqrt(3) / 2 * Configuration().params["photosensitive_area_edge_to_edge"] ** 2 - np.pi *
 				  Configuration().params["active_electrode_radius"] ** 2)
 
-		# if monopolar design, initialize compensation matrix
+		# add compensation matrix, if requested
 		self.G_comp_flag = False
-		if Configuration().params["model"] == Models.MONOPOLAR.value and Configuration().params[
-			'r_matrix_simp_ratio'] < 1:
+		Gs_new = 1 / Configuration().params['shunt_resistance'] if Configuration().params['shunt_resistance'] else 0
+		if Configuration().params["model"] == Models.MONOPOLAR.value and Configuration().params['r_matrix_simp_ratio'] < 1:
 			imag_basis = np.array(self.video_sequence["Frames"]).reshape((self.number_of_pixels, -1))
 			col_norm = np.linalg.norm(imag_basis, axis=0)
 			imag_basis = imag_basis[:, col_norm > 1E-6]
 			(self.resistive_mesh, self.G_comp) = Rmat_simp(Rmat=self.resistive_mesh,
-														   Gs=1 / Configuration().params['shunt_resistance'],
+														   Gs=Gs_new,
 														   ratio=Configuration().params['r_matrix_simp_ratio'],
 														   imag_basis=imag_basis)
 			self.G_comp_flag = True

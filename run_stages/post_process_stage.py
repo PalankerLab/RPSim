@@ -3,10 +3,11 @@ import multiprocessing
 import os
 import sys
 from collections import OrderedDict
+from functools import partial
+from multiprocessing.managers import SharedMemoryManager
 
 import matplotlib
 from PIL import Image
-from multiprocessing import Pool
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -69,6 +70,7 @@ class PostProcessStage(CommonRunStage):
 
 		"""
 		# Common parameters to mono and bipolar configurations
+		self.multiprocess = Configuration().params["multiprocessing"]
 		self.number_of_pixels = Configuration().params["number_of_pixels"]
 		self.pulse_start_time_ms = Configuration().params["pulse_start_time_in_ms"] # TODO automate 
 		self.pulse_duration_ms = Configuration().params["pulse_duration_in_ms"]
@@ -94,9 +96,18 @@ class PostProcessStage(CommonRunStage):
 		self.time_points_to_analyze_ms = self._get_time_sections()
     
 		# define depth resolution
-		default_depth_params =  [x*1 for x in range(160)] # in µm, from the implant up to 159 µm into the retina
-		self.z_values = Configuration().params["depth_values_in_um"] if Configuration().params.get("depth_values_in_um") else default_depth_params
-		
+		default_depth_range = 160 if "human" in Configuration().params["geometry"].lower() else 126
+		default_depth_params_um =  [x*1 for x in range(default_depth_range)]
+		self.depth_values_in_um = Configuration().params["depth_values_in_um"] if Configuration().params.get("depth_values_in_um") else default_depth_params_um
+
+		# initialize for symmetry, will be overriden in the bipolar case
+		self.return_x = None
+		self.x_return_near = None
+		self.y_return_near = None
+		self.y_return_near = None
+		self.return_voltage_mv = None
+		self.return_near_voltage_mv = None
+
 		if Configuration().params["model"] == Models.MONOPOLAR.value:
 			
 			# Load voltages and correct dimensions of the implant
@@ -105,7 +116,7 @@ class PostProcessStage(CommonRunStage):
 			self.y_frame = V_dict[1,:]
 			self.V_dict_ret = V_dict[2:, :]
 
-			# Load the currents for all time points
+			# Load the currents for all the time points
 			self.full_active_current_ua = np.array([self.simulation_stage_output[f'VCProbe{x + 1}'] for x in range(self.number_of_pixels)]) * 1E6 
 			self.full_return_current_ua = np.array(self.simulation_stage_output[f'VCProbe{0}']) * 1E6 
 			# Convert the monopolar currents to a 2D array for compatibility with bipolar configuration - shape (1, nb_time_points)
@@ -318,11 +329,12 @@ class PostProcessStage(CommonRunStage):
 			voltage_xy_matrix = np.reshape(voltage_xy_matrix, self.xx.shape)
 		
 		return voltage_xy_matrix 
-	
-	def _compute_synthesis_2D_multi(self, args):
+
+	@staticmethod
+	def _compute_synthesis_2d_multi(shared_params_keys, shared_params_values, model, shared_memory_name, z_index):
 		"""
-		This function computes the 2D (XY-plane) voltages at a cerain depth/z-height for a given time
-		section, based on the time averaged currents for that given time section, outputed by Xyce per pixel. 
+		This function computes the 2D (XY-plane) voltages at a certain depth/z-height for a given time
+		section, based on the time averaged currents for that given time section, outputted by Xyce per pixel.
 		These computations are specific to a either a bipolar or monopolar pixel configuration. 
 	
 		Params:
@@ -333,34 +345,82 @@ class PostProcessStage(CommonRunStage):
 		Returns:
 			voltage_xy_matrix (Numpy.array (?, ?)): The 2D voltage map for the given z and t slices
 		"""
-			
-		active_current_ua = args[0]
-		return_current_ua = args[1]
-		z_index = args[2]
-		
-		if Configuration().params["model"] == Models.MONOPOLAR.value:
-			# Actual computations forthe XY potential at a a given z-height
-			V_elem_act = np.interp(self.dist_elem, self.active_x, self.active_voltage_mv[z_index, :])
-			V_ret = self.V_dict_ret[(z_index) * self.x_frame.size: (z_index + 1) * self.x_frame.size, :]
+		# initialize output
+		voltage_xy_matrix = None
 
-			voltage_xy_matrix = np.matmul(V_elem_act, active_current_ua)
-			# The return currents are reshaped again into a 1D array TODO check if precision is lost through the reshapes
-			voltage_xy_matrix = np.reshape(voltage_xy_matrix, self.xx.shape) + V_ret * np.reshape(return_current_ua, (-1,))
-		
-		if Configuration().params["model"] == Models.BIPOLAR.value:
-			# Actual computations for the XY potential at a given z-height
-			V_elem_act = np.interp(self.dist_elem, self.active_x, self.active_voltage_mv[z_index, :])
-			V_elem_ret = np.interp(self.dist_elem, self.return_x, self.return_voltage_mv[z_index, :])
+		shared_memory_handle = multiprocessing.shared_memory.SharedMemory(name=shared_memory_name)
+		try:
+			# print('inside mult')
+			# reconstruct params as dictionary
+			shared_params_dictionary = dict(zip(shared_params_keys, shared_params_values))
 
-			V_near = self.return_near_voltage_mv[(z_index) * self.x_return_near.size: (z_index + 1) * self.x_return_near.size, :]
-			myfun = interpolate.RectBivariateSpline(self.x_return_near, self.y_return_near, V_near.T)
+			# extract given arguments
+			active_current_ua = shared_params_dictionary.get('active_current_ua')
+			return_current_ua = shared_params_dictionary.get('return_current_ua')
+			dist_elem = shared_params_dictionary.get('dist_elem')
+			active_x = shared_params_dictionary.get('active_x')
+			active_voltage_mv = shared_params_dictionary.get('active_voltage_mv')
+			V_dict_ret = shared_params_dictionary.get('V_dict_ret')
+			x_frame = shared_params_dictionary.get('x_frame')
+			xx = shared_params_dictionary.get('xx')
+			xx_element = shared_params_dictionary.get('xx_element')
+			yy_element = shared_params_dictionary.get('yy_element')
+			return_x = shared_params_dictionary.get('return_x')
+			x_return_near = shared_params_dictionary.get('x_return_near')
+			y_return_near = shared_params_dictionary.get('y_return_near')
+			return_voltage_mv = shared_params_dictionary.get('return_voltage_mv')
+			return_near_voltage_mv = shared_params_dictionary.get('return_near_voltage_mv')
 
-			idx_near = (self.xx_element < np.max(self.x_return_near)) & (self.yy_element < np.max(self.y_return_near))
-			V_elem_ret[idx_near] = myfun.ev(self.xx_element[idx_near], self.yy_element[idx_near])
 
-			voltage_xy_matrix = np.matmul(V_elem_act, active_current_ua) + np.matmul(V_elem_ret, return_current_ua)
-			voltage_xy_matrix = np.reshape(voltage_xy_matrix, self.xx.shape)
-		
+			if model == Models.MONOPOLAR.value:
+				# Actual computations for the XY potential at a given z-height
+				V_elem_act = np.interp(dist_elem, active_x, active_voltage_mv[z_index, :])
+				V_ret = V_dict_ret[z_index * x_frame.size: (z_index + 1) * x_frame.size, :]
+
+				voltage_xy_matrix = np.matmul(V_elem_act, active_current_ua)
+				# The return currents are reshaped again into a 1D array TODO check if precision is lost through the reshapes
+				voltage_xy_matrix = np.reshape(voltage_xy_matrix, xx.shape) + V_ret * np.reshape(return_current_ua, (-1,))
+
+			elif model == Models.BIPOLAR.value:
+				# Actual computations for the XY potential at a given z-height
+				V_elem_act = np.interp(dist_elem, active_x, active_voltage_mv[z_index, :])
+				V_elem_ret = np.interp(dist_elem, return_x, return_voltage_mv[z_index, :])
+
+				V_near = return_near_voltage_mv[z_index * x_return_near.size: (z_index + 1) * x_return_near.size, :]
+				myfun = interpolate.RectBivariateSpline(x_return_near, y_return_near, V_near.T)
+
+				idx_near = (xx_element < np.max(x_return_near)) & (yy_element < np.max(y_return_near))
+				V_elem_ret[idx_near] = myfun.ev(xx_element[idx_near], yy_element[idx_near])
+
+				voltage_xy_matrix = np.matmul(V_elem_act, active_current_ua) + np.matmul(V_elem_ret, return_current_ua)
+				voltage_xy_matrix = np.reshape(voltage_xy_matrix, xx.shape)
+
+			# if Configuration().params["model"] == Models.MONOPOLAR.value:
+			# 	# Actual computations for the XY potential at a given z-height
+			# 	V_elem_act = np.interp(self.dist_elem, self.active_x, self.active_voltage_mv[z_index, :])
+			# 	V_ret = self.V_dict_ret[(z_index) * self.x_frame.size: (z_index + 1) * self.x_frame.size, :]
+			#
+			# 	voltage_xy_matrix = np.matmul(V_elem_act, active_current_ua)
+			# 	# The return currents are reshaped again into a 1D array TODO check if precision is lost through the reshapes
+			# 	voltage_xy_matrix = np.reshape(voltage_xy_matrix, self.xx.shape) + V_ret * np.reshape(return_current_ua, (-1,))
+			#
+			# if Configuration().params["model"] == Models.BIPOLAR.value:
+			# 	# Actual computations for the XY potential at a given z-height
+			# 	V_elem_act = np.interp(self.dist_elem, self.active_x, self.active_voltage_mv[z_index, :])
+			# 	V_elem_ret = np.interp(self.dist_elem, self.return_x, self.return_voltage_mv[z_index, :])
+			#
+			# 	V_near = self.return_near_voltage_mv[(z_index) * self.x_return_near.size: (z_index + 1) * self.x_return_near.size, :]
+			# 	myfun = interpolate.RectBivariateSpline(self.x_return_near, self.y_return_near, V_near.T)
+			#
+			# 	idx_near = (self.xx_element < np.max(self.x_return_near)) & (self.yy_element < np.max(self.y_return_near))
+			# 	V_elem_ret[idx_near] = myfun.ev(self.xx_element[idx_near], self.yy_element[idx_near])
+			#
+			# 	voltage_xy_matrix = np.matmul(V_elem_act, active_current_ua) + np.matmul(V_elem_ret, return_current_ua)
+			# 	voltage_xy_matrix = np.reshape(voltage_xy_matrix, self.xx.shape)
+				# Ensure that the shared memory block is closed and unlinked
+		finally:
+			shared_memory_handle.close()
+
 		return voltage_xy_matrix, z_index
 	
 	def _generate_potential_matrix_per_time_section(self, start_time, idx_time, total_time):
@@ -377,8 +437,8 @@ class PostProcessStage(CommonRunStage):
 		active_current_ua, return_current_ua, time_vector = self._get_currents_for_time_averaging(start_time, self.averaging_resolution_ms)		
 		
 		# Time averaging in the frame of interest. The width of the window depends on the averaging_resolution_ms
-		# The current arrazs start with shape (nb pixels, np time points) and end up (nb pixels,)
-		# If there is only one time point in the window, do not avergage
+		# The current arrays start with shape (nb pixels, np time points) and end up (nb pixels,)
+		# If there is only one time point in the window, do not average
 		if time_vector.sum() > 1:
 			active_current_ua = (active_current_ua[:, :-1] + active_current_ua[:, 1:]) / 2
 			return_current_ua = (return_current_ua[:, :-1] + return_current_ua[:, 1:]) / 2
@@ -388,29 +448,71 @@ class PostProcessStage(CommonRunStage):
 		return_current_ua = np.sum(return_current_ua * Td, axis=1) / np.sum(Td)
 
 		# initialize output structure for this time point
-		voltage_3d_matrix = np.zeros(self.xx.shape + (len(self.z_values),))
+		voltage_3d_matrix = np.zeros(self.xx.shape + (len(self.depth_values_in_um),))
 
-		## Multiprocessing attempt - parallel computations of the z-slices ##
-		if Configuration().params["multiprocessing"]:
-		
-			# We parallelize synthesis to compute the 2D voltages at different height in parallel 
-			# First we generate a list of the z-slices we need to compute
-			multi_proc_points = [(active_current_ua, return_current_ua, z_index) for z_index, z_value in enumerate(self.z_values)]
-			
+		## run all the different z-slices in parallel, as they are independent
+		if self.multiprocess:
+
 			# Use 2/3 of the CPUs available
-			cpu_to_use = cpu_count() // 3 * 2 
-			#sys.setrecursionlimit(100000) # Trying to overcome the recursion limit
-			### Core loop for iterating over the z-slices (retina's depth) ###
-			with Pool(cpu_to_use) as pool:
-				# We map the z-index list with the compute_synthesis function
-				# The computations happen in parallel, and the results are stored in 
-				# series in an iterator/iterable
-				for voltage_2d_matrix, z_index in pool.map(self._compute_synthesis_2D_multi, multi_proc_points, chunksize=cpu_to_use):
-					# Iterate over the results in series and load the values 
-					voltage_3d_matrix[:, :, z_index] = voltage_2d_matrix
+			cpu_to_use = cpu_count() // 3 * 2
+
+			# extracting self values into a dictionary
+			params = {
+				'active_current_ua': active_current_ua,
+				'return_current_ua': return_current_ua,
+				'dist_elem': self.dist_elem,
+				'active_x': self.active_x,
+				'active_voltage_mv': self.active_voltage_mv,
+				'V_dict_ret': self.V_dict_ret,
+				'x_frame': self.x_frame,
+				'xx': self.xx,
+				'xx_element': self.xx_element,
+				'yy_element': self.yy_element,
+				'return_x': self.return_x,
+				'x_return_near': self.x_return_near,
+				'y_return_near': self.y_return_near,
+				'return_voltage_mv': self.return_voltage_mv,
+				'return_near_voltage_mv': self.return_near_voltage_mv
+			}
+
+			# calculate the total size needed for the shared memory block
+			total_size = sum(value.nbytes if value is not None else 0 for value in params.values())
+
+			# initialize a shared memory block
+			shm = multiprocessing.shared_memory.SharedMemory(create=True, size=total_size, name='shared_block')
+
+			try:
+				# copy shared arrays to shared memory block
+				shared_values = []
+				for value, offset in zip(params.values(), np.cumsum([0] + [value.nbytes if value is not None else 0
+																		   for value in params.values()])[:-1]):
+					if value is not None:
+						copied_array = np.ndarray(value.shape, dtype=value.dtype, buffer=shm.buf, offset=offset)
+						shared_values.append(copied_array)
+					else:
+						shared_values.append(value)
+
+				shared_keys = multiprocessing.shared_memory.ShareableList(params.keys())
+				shared_depth_values = multiprocessing.shared_memory.ShareableList(self.depth_values_in_um)
+				model = Configuration().params["model"]
+
+				# process the needed z-slices in parallel
+				with Pool(cpu_to_use) as pool:
+					results = pool.map(partial(self._compute_synthesis_2d_multi, shared_keys, shared_values, model,
+											   shm.name), shared_depth_values)
+
+			finally:
+				shm.unlink()
+
+			# iterate over the results in series and load the values
+			for voltage_2d_matrix, z_index in results:
+				voltage_3d_matrix[:, :, z_index] = voltage_2d_matrix
+
+			return voltage_3d_matrix
+
 		else:
-			with tqdm(total = len(self.z_values), file = sys.stdout) as pbar_z: # used for PROGRESS BAR
-				for z_index, z_value in enumerate(self.z_values):
+			with tqdm(total = len(self.depth_values_in_um), file = sys.stdout) as pbar_z: # used for PROGRESS BAR
+				for z_index, z_value in enumerate(self.depth_values_in_um):
 					# Progress bar 
 					pbar_z.set_description(f'Processing Z-slice: {1 + z_index} of time point {idx_time + 1}/{total_time}')
 					pbar_z.update(1)
@@ -420,7 +522,7 @@ class PostProcessStage(CommonRunStage):
 					voltage_3d_matrix[:, :, z_index] = self._compute_synthesis_2D(active_current_ua, 
 																				return_current_ua, 
 																				z_index)
-		return voltage_3d_matrix
+			return voltage_3d_matrix
 
 	def _create_potential_plot_per_depth(self, array_to_plot, frame_width, z_index, z_value):
 		vmin, vmax = -20, 180
@@ -514,34 +616,35 @@ class PostProcessStage(CommonRunStage):
 		:param kwargs:
 		:return:
 		"""
-		self.z_values = None
+		self.depth_values_in_um = None
 		self._initialize_analysis_parameters()
 		# find the diodes that are on
 		on_diode_data_during_stable_pulse = self._extract_on_diode_pulses()
 		# Initialize output structures
-		voltage_4d_matrix = np.zeros(self.xx.shape + (len(self.z_values),) + (len(self.time_points_to_analyze_ms),))
+		voltage_4d_matrix = np.zeros(self.xx.shape + (len(self.depth_values_in_um),) + (len(self.time_points_to_analyze_ms),))
 		output_dictionary = {"v(x,y,z,t)_mv": None,
 								"2d_mesh_um": (self.xx, self.yy),
-								"z_um": self.z_values,
+								"z_um": self.depth_values_in_um,
 								"t_ms": self.time_points_to_analyze_ms,
 								"pixel_coordinates_um": self.pixel_coordinates,
 								"on_diode_data": on_diode_data_during_stable_pulse}
 
 
 		# Different progress bar whether we do multiprocessing or not
-		if Configuration().params["multiprocessing"]: 
-			with tqdm(total = len(self.time_points_to_analyze_ms), file = sys.stdout) as pbar_t: # used for PROGRESS BAR
-				### Core loop for iterating over the time sections ###	
-				for time_point_index, time_point_value in enumerate(self.time_points_to_analyze_ms):
-					# Progress bar 
-					pbar_t.set_description(f'Processing z-slices of time-point: {1 + time_point_index}/{len(self.time_points_to_analyze_ms)}...')
-					pbar_t.update(1)
-					sleep(0.1)
-					# calculate matrix for this time point
-					voltage_3d_matrix = self._generate_potential_matrix_per_time_section(start_time=time_point_value, \
-																						idx_time=time_point_index, total_time=len(self.time_points_to_analyze_ms))
-					# add result to output structure
-					voltage_4d_matrix[:, :, :, time_point_index] = voltage_3d_matrix
+		if self.multiprocess:
+			# with tqdm(total = len(self.time_points_to_analyze_ms), file = sys.stdout) as pbar_t: # used for PROGRESS
+				# BAR
+
+				# iterate iver the time points and calculate the volumetric potential matrix for each one
+			for time_point_index, time_point_value in enumerate(self.time_points_to_analyze_ms):
+				# update progress bar
+				# pbar_t.set_description(f'Processing z-slices of time-point: {1 + time_point_index}/{len(self.time_points_to_analyze_ms)}...')
+				# pbar_t.update(1)
+				# sleep(0.1)
+				# calculate matrix for this time point
+				voltage_3d_matrix = self._generate_potential_matrix_per_time_section(start_time=time_point_value, idx_time=time_point_index, total_time=len(self.time_points_to_analyze_ms))
+				# add result to output structure
+				voltage_4d_matrix[:, :, :, time_point_index] = voltage_3d_matrix
 
 		else:
 			for time_point_index, time_point_value in enumerate(self.time_points_to_analyze_ms):
