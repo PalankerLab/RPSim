@@ -5,6 +5,7 @@ This is the main module of the RPSim Software Tool
 import os
 import time
 import logging
+import traceback
 
 from configuration.configuration_manager import Configuration
 from run_manager import RunManager
@@ -87,6 +88,7 @@ def run_rpsim(configuration=None, run_stages=None, skip_stages=None):
 	except Exception as run_error:
 		# report execution errors
 		RPSIM_LOGGER.error(run_error)
+		RPSIM_LOGGER.error("Whole error traceback:\n {}".format(traceback.format_exc()))
 
 	finally:
 		# stop runtime clock

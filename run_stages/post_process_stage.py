@@ -95,7 +95,7 @@ class PostProcessStage(CommonRunStage):
 		self.window_end_ms = self.pulse_start_time_ms + self.pulse_duration_ms + self.pulse_extra_ms
 		self.time_points_to_analyze_ms = self._get_time_sections()
     
-		# define depth resolution
+		# define depth resolution for human or rat, default is 1 µm resolution from 1 to 160 or 126
 		default_depth_range = 160 if "human" in Configuration().params["geometry"].lower() else 126
 		default_depth_params_um =  [x*1 for x in range(default_depth_range)]
 		self.depth_values_in_um = Configuration().params["depth_values_in_um"] if Configuration().params.get("depth_values_in_um") else default_depth_params_um
@@ -107,6 +107,7 @@ class PostProcessStage(CommonRunStage):
 		self.y_return_near = None
 		self.return_voltage_mv = None
 		self.return_near_voltage_mv = None
+		self.V_dict_ret = None
 
 		if Configuration().params["model"] == Models.MONOPOLAR.value:
 			
@@ -257,7 +258,7 @@ class PostProcessStage(CommonRunStage):
 		Returns:
 			active_current_ua (Numpy.array (nb_pixels, nb_time_points))
 			return_current_ua (Numpy.array (nb_pixels, nb_time_points))
-			time_vector (Numpy.array (nb_pixels,))
+			time_vector (Numpy.array (nb_time_points,))
 		"""
 		
 		# All in ms
@@ -277,20 +278,7 @@ class PostProcessStage(CommonRunStage):
 		
 		return active_current_ua, return_current_ua, time_vector
 
-	
-	def _generate_potential_matrix_per_time_section_monopolar(self, start_time, idx_time, total_time, average_over_pulse_duration=True):
-		"""
-		Handles the time analysis for monopolar configuration.
-			Parameters:
-				start_time: 
-				idx_time (int): the current time slice used for the progress bar
-				total_time (int): the total number of time slice to analyze for the progress bar 
-				average_over_pulse_duration (bool): For averaging or not
-		"""
-		# TODO
-		pass
-
-	def _compute_synthesis_2D(self, active_current_ua, return_current_ua, z_index):
+	def _compute_synthesis_2D_serial(self, active_current_ua, return_current_ua, z_index):
 		"""
 		This function computes the 2D (XY-plane) voltages at a cerain depth/z-height for a given time
 		section, based on the time averaged currents for that given time section, outputed by Xyce per pixel. 
@@ -304,7 +292,7 @@ class PostProcessStage(CommonRunStage):
 		Returns:
 			voltage_xy_matrix (Numpy.array (?, ?)): The 2D voltage map for the given z and t slices
 		"""
-			
+		# TODO change z_index variable name to z_value!
 		if Configuration().params["model"] == Models.MONOPOLAR.value:
 			# Actual computations forthe XY potential at a a given z-height
 			V_elem_act = np.interp(self.dist_elem, self.active_x, self.active_voltage_mv[z_index, :])
@@ -331,7 +319,7 @@ class PostProcessStage(CommonRunStage):
 		return voltage_xy_matrix 
 
 	@staticmethod
-	def _compute_synthesis_2d_multi(shared_params_keys, shared_params_values, model, shared_memory_name, z_index):
+	def _compute_synthesis_2D_parallel(shared_params_keys, shared_params_values, model, shared_memory_name, z_index):
 		"""
 		This function computes the 2D (XY-plane) voltages at a certain depth/z-height for a given time
 		section, based on the time averaged currents for that given time section, outputted by Xyce per pixel.
@@ -437,16 +425,20 @@ class PostProcessStage(CommonRunStage):
 		active_current_ua, return_current_ua, time_vector = self._get_currents_for_time_averaging(start_time, self.averaging_resolution_ms)		
 		
 		# Time averaging in the frame of interest. The width of the window depends on the averaging_resolution_ms
-		# The current arrays start with shape (nb pixels, np time points) and end up (nb pixels,)
-		# If there is only one time point in the window, do not average
 		if time_vector.sum() > 1:
 			active_current_ua = (active_current_ua[:, :-1] + active_current_ua[:, 1:]) / 2
 			return_current_ua = (return_current_ua[:, :-1] + return_current_ua[:, 1:]) / 2
 			Td = time_vector[1:] - time_vector[:-1]
-		# TODO check the case when there is only one time point, how to define Td
-		active_current_ua = np.sum(active_current_ua * Td, axis=1) / np.sum(Td)
-		return_current_ua = np.sum(return_current_ua * Td, axis=1) / np.sum(Td)
-
+			# Average over time
+			active_current_ua = np.sum(active_current_ua * Td, axis=1) / np.sum(Td)
+			return_current_ua = np.sum(return_current_ua * Td, axis=1) / np.sum(Td)
+			# The current arrays start with shape (nb pixels, np time points) and end up (nb pixels,)
+		else:
+			# If there is only one time point, do not average but reshape 
+			# Reshape into a (nb_pixels,) array from (nb_pixels, 1) array
+			active_current_ua = active_current_ua.reshape(-1,)
+			return_current_ua = return_current_ua.reshape(-1,)
+		
 		# initialize output structure for this time point
 		voltage_3d_matrix = np.zeros(self.xx.shape + (len(self.depth_values_in_um),))
 
@@ -498,7 +490,7 @@ class PostProcessStage(CommonRunStage):
 
 				# process the needed z-slices in parallel
 				with Pool(cpu_to_use) as pool:
-					results = pool.map(partial(self._compute_synthesis_2d_multi, shared_keys, shared_values, model,
+					results = pool.map(partial(self._compute_synthesis_2D_parallel, shared_keys, shared_values, model,
 											   shm.name), shared_depth_values)
 
 			finally:
@@ -519,9 +511,9 @@ class PostProcessStage(CommonRunStage):
 					sleep(0.1)
 					
 					# Compute the voltages and update the output structures
-					voltage_3d_matrix[:, :, z_index] = self._compute_synthesis_2D(active_current_ua, 
+					voltage_3d_matrix[:, :, z_index] = self._compute_synthesis_2D_serial(active_current_ua, 
 																				return_current_ua, 
-																				z_index)
+																				z_value)
 			return voltage_3d_matrix
 
 	def _create_potential_plot_per_depth(self, array_to_plot, frame_width, z_index, z_value):
@@ -568,11 +560,12 @@ class PostProcessStage(CommonRunStage):
 
 		# define a sttable pulse time window
 		# TODO update with new parameters self.window_start and end
-		time_window_start = Configuration().params["pulse_start_time_in_ms"] if Configuration().params["pulse_start_time_in_ms"] else 200
-		time_window_end = time_window_start + (Configuration().params["pulse_duration_in_ms"] if Configuration().params["pulse_duration_in_ms"] else 9.8)
+		#time_window_start = Configuration().params["pulse_start_time_in_ms"] if Configuration().params["pulse_start_time_in_ms"] else 200
+		#time_window_end = time_window_start + (Configuration().params["pulse_duration_in_ms"] if Configuration().params["pulse_duration_in_ms"] else 9.8)
 
 		# find the indices that correspond to the time window
-		indices_in_window = np.where((time_ms >= time_window_start) & (time_ms <= time_window_end))
+		# TODO: make sure that the window is not empty 
+		indices_in_window = np.where((time_ms >= self.window_start_ms) & (time_ms <= self.window_end_ms))
 
 		# filter time vector to pulse window
 		time_ms = time_ms[indices_in_window]
@@ -632,19 +625,18 @@ class PostProcessStage(CommonRunStage):
 
 		# Different progress bar whether we do multiprocessing or not
 		if self.multiprocess:
-			# with tqdm(total = len(self.time_points_to_analyze_ms), file = sys.stdout) as pbar_t: # used for PROGRESS
+			with tqdm(total = len(self.time_points_to_analyze_ms), file = sys.stdout) as pbar_t: # used for PROGRESS
 				# BAR
-
 				# iterate iver the time points and calculate the volumetric potential matrix for each one
-			for time_point_index, time_point_value in enumerate(self.time_points_to_analyze_ms):
-				# update progress bar
-				# pbar_t.set_description(f'Processing z-slices of time-point: {1 + time_point_index}/{len(self.time_points_to_analyze_ms)}...')
-				# pbar_t.update(1)
-				# sleep(0.1)
-				# calculate matrix for this time point
-				voltage_3d_matrix = self._generate_potential_matrix_per_time_section(start_time=time_point_value, idx_time=time_point_index, total_time=len(self.time_points_to_analyze_ms))
-				# add result to output structure
-				voltage_4d_matrix[:, :, :, time_point_index] = voltage_3d_matrix
+				for time_point_index, time_point_value in enumerate(self.time_points_to_analyze_ms):
+					# update progress bar
+					pbar_t.set_description(f'Processing z-slices of time-point: {1 + time_point_index}/{len(self.time_points_to_analyze_ms)}...')
+					pbar_t.update(1)
+					sleep(0.1)
+					# calculate matrix for this time point
+					voltage_3d_matrix = self._generate_potential_matrix_per_time_section(start_time=time_point_value, idx_time=time_point_index, total_time=len(self.time_points_to_analyze_ms))
+					# add result to output structure
+					voltage_4d_matrix[:, :, :, time_point_index] = voltage_3d_matrix
 
 		else:
 			for time_point_index, time_point_value in enumerate(self.time_points_to_analyze_ms):
