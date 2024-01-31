@@ -239,10 +239,9 @@ class Configuration(metaclass=Singleton):
 				# The default number of CPU to use is two thirds of the CPUs available
 				cpu_to_use = cpu_count() // 3 * 2
 				# If the number of element to parallelize is smaller than the number of cpu, reduce its size
-				elem_to_parallelize = len(self.params['depth_values_in_um'])
-				if elem_to_parallelize < cpu_to_use:
+				if (self.params['depth_values_in_um'] is not None) and (len(self.params['depth_values_in_um']) < cpu_to_use ):
 					# TODO deterine the ideal chunksize 
-					cpu_to_use = elem_to_parallelize / 2 
+					cpu_to_use = len(self.params['depth_values_in_um']) / 2 
 				self.params['cpu_to_use'] = cpu_to_use
 		else:
 			self.params['cpu_to_use'] = 1
