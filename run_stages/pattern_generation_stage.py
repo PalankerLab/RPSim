@@ -364,7 +364,7 @@ class ImagePattern():
          
         # Starting font size
         font_size = 1
-        font_path = Configuration().params["font_path"] 
+        font_path = os.path.abspath("../RPSim/utilities/Sloan.otf") if Configuration().params["font_path"] is None else Configuration().params["font_path"]
         try:
             font = ImageFont.truetype(font_path, font_size)
         except OSError as error: 
