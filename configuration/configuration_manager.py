@@ -14,6 +14,7 @@ from pathlib import Path
 from deepdiff import DeepDiff
 from collections import defaultdict
 from prettytable import PrettyTable
+from multiprocessing import cpu_count
 
 from configuration.models import Models
 from configuration.stages import StageManager, RunStages
@@ -231,6 +232,20 @@ class Configuration(metaclass=Singleton):
 		with open(self.params["pixel_label_input_file"], 'rb') as f:
 			image_label = pickle.load(f)
 			self.params["number_of_pixels"] = image_label.max()
+
+		# Determining the number of cpu to use
+		if self.params['multiprocessing']:
+			if self.params['cpu_to_use'] is None:
+				# The default number of CPU to use is two thirds of the CPUs available
+				cpu_to_use = cpu_count() // 3 * 2
+				# If the number of element to parallelize is smaller than the number of cpu, reduce its size
+				elem_to_parallelize = len(self.params['depth_values_in_um'])
+				if elem_to_parallelize < cpu_to_use:
+					# TODO deterine the ideal chunksize 
+					cpu_to_use = elem_to_parallelize / 2 
+				self.params['cpu_to_use'] = cpu_to_use
+		else:
+			self.params['cpu_to_use'] = 1
 
 	def get_configuration_as_table(self):
 		"""
