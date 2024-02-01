@@ -99,15 +99,19 @@ class ImagePattern():
 
     Attributes:
         pixel_size (int): The pixel size in micron - More precisely the pitch between pixels
+        suffix (str): Whether we use the large configuration (_lg) or regular size ()
+        font_path (str): The path to the font used for printing text patterns
+
         implant_layout (PIL.Image): The image of the pixcel layout
         pixel_labels (Numpy.array): Array having the same size as implant_layout. Each entry corresponds to either 0 or the pixel label (the active and return electrodes are also labeled 0, only the photodiode is non-zero)
-        
+         
         center_x, center_y (int, int): The iamge pixels coordinate in implant_layout corresponding the center of the central hexagon
         width, height (int, int): The size in image pixels (and microns) of the implant_layout image
         
         backgroud_overlay (PIL.Image): The pixel pattern as background, and the projected image as overlay
         projected (PIL.Image): A black screen as background, and the projected image as overlay
 
+        opacity (int): Opacity of the overlayed pattern onto the pixel layout 
         image_pixel_scale (float): The scale in pixel/micron of the implant layout's PNG image
         scaled_pixel (int): The size of the pixel in image-pixel 
     """
@@ -115,17 +119,20 @@ class ImagePattern():
     def __init__(self, pixel_size):
 
         self.pixel_size = pixel_size
-
         suffix = Configuration().params["pixel_size_suffix"] # Whether we use the large file "_lg" or not
+        self.font_path = os.path.abspath("../RPSim/utilities/Sloan.otf") if Configuration().params["font_path"] is None else Configuration().params["font_path"]
+
         self.implant_layout = self.load_file(f"Grid_PS{self.pixel_size}{suffix}.png")
         self.pixel_labels = self.load_file(f"pixel_label_PS{self.pixel_size}{suffix}.pkl")
 
         self.center_x, self.center_y = self.find_center()
         self.width, self.height = self.implant_layout.size[0], self.implant_layout.size[1]
 
-        self.background_overlay = self.implant_layout.copy()
+        self.background_overlay = self.implant_layout.copy() 
+        self.background_overlay.putalpha(255) # Remove transparency to fully opaque
         self.projected = Image.new("RGB", self.background_overlay.size, "black")
         
+        self.opacity = 180 # (0, 255) (transparent to opaque)
         self.image_pixel_scale = self.find_image_scale()
         self.scaled_pixel = int(self.pixel_size * self.image_pixel_scale)
 
@@ -244,12 +251,13 @@ class ImagePattern():
     
     ############################ Functions for computing position and sizes ############################
     
-    def convert_user_position_to_actual(self, user_position, width, height):
+    def convert_user_position_to_image_position(self, user_position, unit, width, height):
         """
         Convert the user position to the actual position where the object should be located in the final image,
         taking into account the offset of the bouding box for correct centering.
             Parameters:
                 user_position ((float, float)): The position with respect to the central  as multiple of the pixel size. 1.5 along X, means going toward the pixel in diagonal
+                unit (str): The unit in which the pattern's parameters are encoded, either pixel or um. 
                 width (int): The width of the object to paste in the final image
                 height (int): The height of the object to paste in the final image
 
@@ -257,18 +265,24 @@ class ImagePattern():
                 actual_position (int, int): The position where the image should be located on the projected/overlay image
         """
 
-        # Move the letter by multiple of the pixel size as requested by the user
-        center_x, center_y = self.center_x, self.center_y
-        shift_x, shift_y = user_position
-        # TODO the translation is not perfect, double check how to adjust it    
-        # As the pattern is a honeycomb and not a grid, half pixel should be taken into account
-        rounded_x = np.round(shift_x)
-        if shift_x == rounded_x: # TODO do more test to check whether this calculation make sense
-            center_x += shift_x * self.scaled_pixel
-        else:
-            center_x += (rounded_x - np.sign(shift_x) * np.sin(np.pi * 30/180)) * self.scaled_pixel
+        if unit == 'pixel':
+            # Move the letter by multiple of the pixel size as requested by the user
+            center_x, center_y = self.center_x, self.center_y
+            shift_x, shift_y = user_position
+            # TODO the translation is not perfect, double check how to adjust it    
+            # As the pattern is a honeycomb and not a grid, half pixel should be taken into account
+            rounded_x = np.round(shift_x)
+            if shift_x == rounded_x: # TODO do more test to check whether this calculation make sense
+                center_x += shift_x * self.scaled_pixel
+            else:
+                center_x += (rounded_x - np.sign(shift_x) * np.sin(np.pi * 30/180)) * self.scaled_pixel
+            
+            center_y +=  shift_y * np.cos(np.pi * 30/180) * self.scaled_pixel
         
-        center_y +=  shift_y * np.cos(np.pi * 30/180) * self.scaled_pixel
+        elif unit == 'um':
+            center_x, center_y = user_position
+            center_x *= self.image_pixel_scale
+            center_y *= self.image_pixel_scale 
         
         # Take into account the offset due to the object size, as PIL aligns 
         # from the top-left corner and not from the center of the object
@@ -364,18 +378,17 @@ class ImagePattern():
          
         # Starting font size
         font_size = 1
-        font_path = os.path.abspath("../RPSim/utilities/Sloan.otf") if Configuration().params["font_path"] is None else Configuration().params["font_path"]
         try:
-            font = ImageFont.truetype(font_path, font_size)
+            font = ImageFont.truetype(self.font_path, font_size)
         except OSError as error: 
             print(error) 
-            print(f"The font file could not be found with the path: {font_path}")
+            print(f"The font file could not be found with the path: {self.font_path}")
 
         text = "C"
         while font.getlength(text) < letter_size:
             # Iterate until the text size is slightly larger than the criteria
             font_size += 1
-            font = ImageFont.truetype(font_path, font_size)
+            font = ImageFont.truetype(self.font_path, font_size)
         
         return font
     
@@ -392,8 +405,15 @@ class ImagePattern():
                 text_image (PIL.Image): An image of the letter on black background with the correct size and orientation
         """
         
+        # Send warning if lower case letters were used with Sloan font (the default)
+        if any([x.islower() for x in pattern.text]) and ('Sloan' in self.font_path):
+            pattern.text = pattern.text.upper()
+            warnings.warn("Lowercase characters do not exist in Sloan font. All letters were converted to uppercase.")
+
         # Convert sizes to image based pixel
         letter_size = int(pattern.letter_size * (self.scaled_pixel if pattern.unit == "pixel" else self.image_pixel_scale))
+        if letter_size <= self.scaled_pixel:
+            warnings.warn("The letter size is equal or smaller to the pixel size and will not be resolved.")
         
         # Determine image size
         lines = pattern.text.splitlines()
@@ -407,14 +427,14 @@ class ImagePattern():
         text_drawing = ImageDraw.Draw(text_image)
         # Find the font size matching the letter size
         font = self.determine_font_size(letter_size)
-        text_drawing.text((0, 0), pattern.text, font=font, fill="white", align='center', spacing=0) # TODO check for the desired vertical spacing, if non-zero, increase image_size height by spacing, eventually use ImageDraw.textbox() 
+        text_drawing.text((0, 0), pattern.text, font=font, fill="white", align='center', spacing=0) # TODO check for the desired vertical spacing, if non-zero, increase image_size height by spacing, eventually use ImageDraw.textbox()
         
         # Rotate with expansion of the image (i.e. no crop)
         text_image = text_image.rotate(pattern.rotation, expand = 1)
 
         # Compute the new position taking into account the user position, the offset due to image size
         # and the new size due to rotation expansion
-        actual_position = self.convert_user_position_to_actual(pattern.user_position, text_image.size[0], text_image.size[1])
+        actual_position = self.convert_user_position_to_image_position(pattern.position, pattern.unit, text_image.size[0], text_image.size[1])
         
         self.determine_overflow(image_size, max_len, n_lines)
 
@@ -436,11 +456,10 @@ class ImagePattern():
         width_grating = int(pattern.width_grating * (self.scaled_pixel if pattern.unit == "pixel" else self.image_pixel_scale))
         pitch_grating = int(pattern.pitch_grating * (self.scaled_pixel if pattern.unit == "pixel" else self.image_pixel_scale))
    
-        
         theta = np.deg2rad(pattern.rotation)
 
         # We want the grating to overlap the central pixel, hence offset by half the grating rotated width
-        offset_x = int( np.cos(theta) * width_grating / 2 ) + pattern.user_position[0] * self.scaled_pixel
+        offset_x = int( np.cos(theta) * width_grating / 2 ) + pattern.position[0] * self.scaled_pixel
 
         # Compute the bottom left corner of the grating, from the image center to the right
         fwd_x_pos = np.arange(self.center_x - offset_x, 2 * self.width, width_grating + pitch_grating)
@@ -500,7 +519,7 @@ class ImagePattern():
         width = rectangle.size[0]
         height = rectangle.size[1]
 
-        actual_position = self.convert_user_position_to_actual(pattern.user_position, width, height)
+        actual_position = self.convert_user_position_to_image_position(pattern.position, pattern.unit, width, height)
         self.assemble_drawing(actual_position, rectangle)
 
     def draw_circle(self, pattern):
@@ -518,8 +537,25 @@ class ImagePattern():
         circle = Image.new("RGBA", (diameter, diameter), (0, 0, 0, 0))
         draw = ImageDraw.Draw(circle)
         draw.ellipse([0, 0, diameter-1, diameter-1], fill="white")
-        actual_position = self.convert_user_position_to_actual(pattern.user_position, diameter, diameter)
+        actual_position = self.convert_user_position_to_image_position(pattern.position, pattern.unit, diameter, diameter)
         self.assemble_drawing(actual_position, circle)
+    
+    def generate_overlayed_pattern(self, pil_img):
+        """
+        Generate a semi transparent image of the pattern for the overlayed image containing the pixel layout.
+        Changing the transparency of the foreground without modifying the transparency of the background (here 0)
+        is tricky with Pillow. It is easier to do it with numpy arrays.
+
+        Params:
+            pil_img (PIL.Image (RGBA)): The image containing the pattern only
+        """
+        
+        array_img = np.array(pil_img)
+        # Select all pixel/entries with transparency superior to 0 (i.e. all non-background)
+        location_pattern = array_img[:,:,3] > 0
+        # Set the opacity of the pattern to semitransparent 
+        array_img[location_pattern, 3] = self.opacity
+        return Image.fromarray(array_img)
     
     def assemble_drawing(self, actual_position, to_be_projected):
         """
@@ -530,8 +566,10 @@ class ImagePattern():
         """
         
         # Create the final images
-        self.background_overlay.paste(to_be_projected, actual_position, to_be_projected)
         self.projected.paste(to_be_projected, actual_position, to_be_projected)
+        # Create a semitransparent overlay onto the pixel layout
+        to_be_overlayed = self.generate_overlayed_pattern(to_be_projected)
+        self.background_overlay.paste(to_be_overlayed, actual_position, to_be_overlayed)
 
         # Add the red frame around the projected image
         drawing_projection = ImageDraw.Draw(self.projected)
@@ -545,12 +583,12 @@ class Pattern():
     """
     Superclass defining the basics of a pattern. 
     Attributes:
-        user_position (float, float): The pattern's center with respect to the central pixel in the layout  
+        position (float, float): The pattern's center with respect to the central pixel in the layout  
         rotation (float): The clockwise rotation of the pattern in degrees
         unit (float): Either 'pixel' or 'um'. Pixel for features which are multiples of the pixel size, or um for micrometers.      
     """
-    def __init__(self, user_postion = (0, 0), rotation = 0, unit = "pixel"):
-        self.user_position = user_postion
+    def __init__(self, postion = (0, 0), rotation = 0, unit = "pixel"):
+        self.position = postion
         self.rotation = rotation
         
         if not isinstance(unit, str):
@@ -563,15 +601,14 @@ class Pattern():
         pass
 
     def draw(self, drawing_board):
-        pass
-        
+        pass        
 
 
 class Text(Pattern):
     """
     Class defining the parameters for drawing a text. 
     Attributes:
-        user_position ((float, float)): The position with respect to the central pixel as multiple of the elec. pixel size. Half pixel means going toward the diagonal
+        position ((float, float)): The position with respect to the central pixel as multiple of the elec. pixel size. Half pixel means going toward the diagonal
         rotation (float): Clockwise rotation of the text in degrees
         unit (float): Either 'pixel' or 'um'. Pixel for features which are multiple of the pixel size, or um for micrometers.      
         text (string): The text to be projected 
@@ -590,17 +627,17 @@ class Text(Pattern):
             -> the letter size should be 5 times the gap size
             -> the computation are done in image pixel through self.scaled_pixel or self.image_pixel_scale
     """    
-    def __init__(self, user_position = (0, 0), rotation = 0, text = "C", unit = "pixel", letter_size = 5, gap_size = None):
-        super().__init__(user_position, rotation, unit)
+    def __init__(self, position = (0, 0), rotation = 0, text = "C", unit = "pixel", letter_size = 5, gap_size = None):
+        super().__init__(position, rotation, unit)
         self.letter_size = letter_size
         self.text = text
-
+        
         # Gap opening overwrites letter size
         if gap_size is not None:
             self.letter_size = 5 * gap_size
     
     def __str__(self):
-        return f"User position: {self.user_position}\nRotation: {self.rotation}\nLetter size {self.letter_size}\nText {self.text}"
+        return f"User position: {self.position}\nRotation: {self.rotation}\nLetter size {self.letter_size}\nText {self.text}"
 
     def draw(self, drawing_board):
         drawing_board.draw_text(self)
@@ -610,25 +647,25 @@ class Grating(Pattern):
     """
     Class defining the parameters for drawing a grating. 
     Attributes:
-        user_position (float, int): The position of the grating with respect to the central pixel, move with respect to the pixel size along the X-axis. Y-axis is not implemented yet.  
+        position (float, int): The position of the grating with respect to the central pixel, move with respect to the pixel size along the X-axis. Y-axis is not implemented yet.  
         rotation (float): The clockwise rotation of the grating in degrees - Between -90° and 90° included 
         unit (float): Either 'pixel' or 'um'. Pixel for features which are multiple of the pixel size, or um for micrometers.      
         width_grating (int): The width of grating in micron
         pitch_grating (int): The shortest distance separating each grating (edge to edge) in micron
     """ 
-    def __init__(self, user_position = (0, 0), rotation = 45, unit = "pixel", width_grating = 1, pitch_grating = 1):
-        super().__init__(user_position, rotation, unit)
+    def __init__(self, position = (0, 0), rotation = 45, unit = "pixel", width_grating = 1, pitch_grating = 1):
+        super().__init__(position, rotation, unit)
 
         if (np.abs(rotation) > 90):
             raise ValueError("The rotation angle shoud be between -90° <= rotation <= 90°")
-        if user_position[1] != 0:
+        if position[1] != 0:
             warnings.warn("The Y position cannot be shifted. Y is set to 0 instead.")
 
         self.width_grating = width_grating
         self.pitch_grating = pitch_grating
     
     def __str__(self):
-        return f"User position: {self.user_position}\nRotation: {self.rotation}\nWidth grating {self.width_grating}\nPitch grating {self.pitch_grating}"
+        return f"User position: {self.position}\nRotation: {self.rotation}\nWidth grating {self.width_grating}\nPitch grating {self.pitch_grating}"
     
     def draw(self, drawing_board):
         drawing_board.draw_grating(self)
@@ -638,19 +675,19 @@ class Rectangle(Pattern):
     """ 
     Class defining the parameters for drawing a rectangle. 
     Attributes:          
-        user_position (float, float): The position of the grating with respect to the central pixel  
+        position (float, float): The position of the grating with respect to the central pixel  
         rotation (float): The clockwise rotation of the rectangle in degrees
         unit (float): Either 'pixel' or 'um'. Pixel for features which are multiple of the pixel size, or um for micrometers.      
         width (float): The rectangle's width in micron
         height (float): The rectangle's height in micron
     """    
-    def __init__(self, user_position = (0, 5), rotation = 45, unit = "pixel", width  =  100, height = 100):
-        super().__init__(user_position, rotation, unit)
+    def __init__(self, position = (0, 5), rotation = 45, unit = "pixel", width  =  100, height = 100):
+        super().__init__(position, rotation, unit)
         self.width = width
         self.height = height 
     
     def __str__(self):
-        return f"User position: {self.user_position}\nRotation: {self.rotation}\nWidth {self.width}\nHeight {self.height}"
+        return f"User position: {self.position}\nRotation: {self.rotation}\nWidth {self.width}\nHeight {self.height}"
     
     def draw(self, drawing_board):
         drawing_board.draw_rectangle(self)
@@ -661,15 +698,15 @@ class Circle(Pattern):
     Class defining the parameters for drawing a circle. 
     Note that the rotation is not used for circles. 
     Attributes:          
-        user_position (float, float): The position of the circle with respect to the central pixel
+        position (float, float): The position of the circle with respect to the central pixel
         diameter (float): The circle diameter in micron
     """  
-    def __init__(self, user_position = (0, 0), unit="pixel", diameter = 200):
-        super().__init__(user_position, rotation = 0, unit=unit)
+    def __init__(self, position = (0, 0), unit="pixel", diameter = 200):
+        super().__init__(position, rotation = 0, unit=unit)
         self.diameter = diameter
 
     def __str__(self):
-        return f"User position: {self.user_position}\nRotation: {self.rotation}\nDiameter {self.diameter}"
+        return f"User position: {self.position}\nRotation: {self.rotation}\nDiameter {self.diameter}"
     
     def draw(self, drawing_board):
         drawing_board.draw_circle(self)
@@ -693,7 +730,7 @@ class FullField(Pattern):
         return f"Full field coverage"
     
     def draw(self, drawing_board):
-        drawing_board.draw_rectangle(Rectangle(height=None, width=None, rotation=0, user_position=(0,0)), fill_color = self.color)
+        drawing_board.draw_rectangle(Rectangle(height=None, width=None, rotation=0, position=(0,0)), fill_color = self.color)
 
 
 ################## Classes for organizing the creation of GIF/video sequences ##################
@@ -769,26 +806,26 @@ class ProjectionSequence():
 
     Attributes:
         frames (list(Frame)): The frames to be displayed
-        intensity (float): The intensity of the light projected in mW / mm^2
-        frequency (float): The image frequency (or frame rate) in Hz. 
-        time_step (float): The rise and fall time of the current source in ms
+        intensity_mW_mm2 (float): The intensity of the light projected in mW / mm^2
+        frequency_Hz (float): The image frequency (or frame rate) in Hz. 
+        time_step_ms (float): The rise and fall time of the current source in ms
 
         Note that the sum of the subframes' duration should equal the frame period (1 / frequency).
     """
 
-    def __init__(self, frames, intensity=1.0, frequency=10, time_step=0.05):
+    def __init__(self, frames, intensity_mW_mm2=1.0, frequency_Hz=10, time_step_ms=0.05):
         if (len(frames) == 0):
             raise ValueError("No frames were provided for the projection sequence!")
-        if (np.abs(intensity) <= 0):
+        if (np.abs(intensity_mW_mm2) <= 0):
             raise ValueError("The laser intensity should be more than 0 mW / mm^2!")
-        if (np.abs(frequency) <= 0):
+        if (np.abs(frequency_Hz) <= 0):
             raise ValueError("The frame duration should be more than 0 ms!")
         
         self.frames = frames
-        self.intensity = intensity
-        self.frequency = frequency
-        self.frame_period = (1 / frequency)*1000 # in ms
-        self.time_step = time_step 
+        self.intensity_mW_mm2 = intensity_mW_mm2
+        self.frequency_Hz = frequency_Hz
+        self.frame_period_ms = (1 / frequency_Hz)*1000 # in ms
+        self.time_step_ms = time_step_ms 
 
         self.check_duration()
 
@@ -803,9 +840,9 @@ class ProjectionSequence():
         Returns a script with similar structure to the one used with pre-existing patterns
         """
         script = [
-                    ["Light Intensity", self.intensity, "mW/mm^2"],
-                    ["Frame period", self.frame_period, "ms"],
-                    ["Time step", self.time_step, "ms"]
+                    ["Light Intensity", self.intensity_mW_mm2, "mW/mm^2"],
+                    ["Frame period", self.frame_period_ms, "ms"],
+                    ["Time step", self.time_step_ms, "ms"]
                 ]
         return script
     
@@ -814,7 +851,7 @@ class ProjectionSequence():
         Returns a dictionary containing the configuration required for pattern generation 
         """
         
-        config = {"intensity": self.intensity, "frequency": self.frequency, "time_step": self.time_step, "Frames": {}}
+        config = {"intensity": self.intensity_mW_mm2, "frequency": self.frequency_Hz, "time_step": self.time_step_ms, "Frames": {}}
         for idx, frame in enumerate(self):
             config["Frames"][f"Frame_{idx+1}"] = frame.store_config()
 
@@ -829,8 +866,8 @@ class ProjectionSequence():
             for subframe in frame:
                 sum_duration += subframe.duration
             
-            if sum_duration != self.frame_period:
-                raise ValueError(f"The sum of subframe duration ({sum_duration}) does not equal the frame period ({self.frame_period}) for frame '{frame.name}'!")
+            if sum_duration != self.frame_period_ms:
+                raise ValueError(f"The sum of subframe duration ({sum_duration}) does not equal the frame period ({self.frame_period_ms}) for frame '{frame.name}'!")
             
     def __str__(self):
         return self.store_config()

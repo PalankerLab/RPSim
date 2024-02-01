@@ -69,7 +69,6 @@ class CurrentSequenceStage(CommonRunStage):
 		:return:
 		"""
 		
-		self.is_generated = Configuration().params["generate_pattern"]
 		if self.is_generated:
 			#list_images = self.outputs_container["pattern_generation"][0]
 			list_images = self.outputs_container[RunStages.pattern_generation.name][0]
