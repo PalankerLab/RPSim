@@ -122,16 +122,16 @@ class CircuitStage(CommonRunStage):
 		# mimic an ideal switch with a continuous element
 		self.circuit.model('SW1V', 'VSWITCH', Ron=1 @ U.u_Ohm, Roff=1 @ U.u_MOhm, Voff=0.45 @ U.u_V, Von=0.55 @ U.u_V)
 		self.circuit.subcircuit(
-			ImageDriver('ImgDr', image_T=[x * self.video_sequence['T_frame'] for x in self.video_sequence['L_images']],
+			ImageDriver('ImgDr', image_T=[x * self.video_sequence['duration_frames_ms'] for x in self.video_sequence['nb_repetitions_frames']],
 						delay=2))
 
 		# number of output ports depends on the number of images
-		image_control_ports = [f'ImgON{x + 1}' for x in range(len(self.video_sequence['L_images']))]
+		image_control_ports = [f'ImgON{x + 1}' for x in range(len(self.video_sequence['nb_repetitions_frames']))]
 		self.circuit.X('ImgCtl', 'ImgDr', *tuple([self.circuit.gnd] + image_control_ports))
 		for px_idx in range(1, self.number_of_pixels + 1):
 			self.circuit.subcircuit(FramesDriver(f'fd{px_idx}',
 												 frame_val=self.video_sequence['Frames'][px_idx - 1],
-												 frame_T=self.video_sequence['T_subframes'],
+												 frame_T=self.video_sequence['duration_subframes_ms'],
 												 time_step=self.video_sequence['time_step'],
 												 Apho_factor=Configuration().params[
 													 "Ipho_scaling"] if Configuration().params.get(

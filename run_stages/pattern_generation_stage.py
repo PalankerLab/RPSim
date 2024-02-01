@@ -1,5 +1,6 @@
 import pickle
 import matplotlib.pyplot as plt
+import pandas as pd
 import numpy as np
 import os
 import warnings
@@ -55,36 +56,30 @@ class PatternGenerationStage(CommonRunStage):
             projection_sequence = Configuration().params["projection_sequences"]
             self.script = projection_sequence.get_script()
 
+            # Iterate on the frames of the projection
             for frame in projection_sequence:
-                # Row containing the script information (compatible with previous implementation)
-                row = []
+                # For temporary storing the outputs
                 list_tmp_bmp = []
                 list_tmp_array = []
 
-                # Add the name and number of repetitions to the script
-                row.append(frame.name)
-                row.append(frame.repetitions)
-
+                # Iterate on the subframes for the given frame
                 for idx, subframe in enumerate(frame):
-                    # Several patterns can be added to a drawing_board / subframe
-
                     drawing_board = ImagePattern(pixel_size = Configuration().params["pixel_size"])
+                    # Several patterns can be added to a drawing_board / subframe
                     for pattern in subframe:
                         # Draw the provided pattern
                         pattern.draw(drawing_board)
 
                     # Save subframe
-                    row.append(subframe.duration)
                     list_tmp_bmp.append((f'Subframe{int(idx+1)}', drawing_board.save_as_PIL()))
                     list_tmp_array.append(drawing_board.save_as_array())
                 
                 # Save frame
-                self.script.append(row)
                 self.dict_PIL_images[frame.name] = list_tmp_bmp
                 self.list_subframes_as_ndarray.append(list_tmp_array)
             
             # Current Sequence stage uses the ndarray frames and script, the PIL images are for the user only
-            return [self.list_subframes_as_ndarray, self.script, self.dict_PIL_images, Configuration().params["path_projection_sequence_script"]]                        
+            return [self.list_subframes_as_ndarray, self.script, self.dict_PIL_images]                        
         else:
             # If we load pre-existing patterns, we do not need to process anything
             return []  
@@ -741,7 +736,7 @@ class Subframe():
     A Subframe contains a list of patterns that is being displayed for a certain duration.
 
     Attributes:
-        duration (float): Projection time in ms, it should be 0 < duration < ProjectionSequence.duration
+        duration (float): Projection time in ms, it should be 0 < duration < ProjectionSequence.duration_ms
         patterns (list(ImagePattern)): List of patterns to diplay
     """
     def __init__(self, duration_ms, patterns=[Text(text='C', gap_size=1.2)]):
@@ -751,7 +746,7 @@ class Subframe():
         if (len(patterns) == 0):
             raise ValueError("No patterns were provided for the subframe!")
         
-        self.duration = duration_ms 
+        self.duration_ms = duration_ms 
         self.patterns = patterns
 
     def __iter__(self):
@@ -795,7 +790,7 @@ class Frame():
         
         config = {"repetitions": self.repetitions, "name": self.name, "Subframes": {}}
         for idx, subframe in enumerate(self):
-            config["Subframes"][f"Subframe_{idx+1}.bmp"] = subframe.duration
+            config["Subframes"][f"Subframe_{idx+1}.bmp"] = subframe.duration_ms
 
         return config
 
@@ -837,14 +832,30 @@ class ProjectionSequence():
     
     def get_script(self):
         """
-        Returns a script with similar structure to the one used with pre-existing patterns
+        Returns a Panda dataframe structured similarly to the script used with pre-existing patterns
         """
-        script = [
-                    ["Light Intensity", self.intensity_mW_mm2, "mW/mm^2"],
-                    ["Frame period", self.frame_period_ms, "ms"],
-                    ["Time step", self.time_step_ms, "ms"]
-                ]
-        return script
+        
+        second_half = []
+        max_subframes = []
+        # Iterate on the frames
+        for frame in self:
+            ls = [frame.name, frame.repetitions]
+            max_subframes.append(len(frame.subframes))
+            # Iterate on the subframes and extract the durations
+            for subframe in frame:
+                ls.append(subframe.duration_ms)
+            second_half.append(ls)
+        max_subframes = max(max_subframes)
+
+        data = [
+            ['Light Intensity', self.intensity_mW_mm2, 'mW/mm^2'],
+            ['Frame period', self.frame_period_ms, 'ms'],
+            ['Time step', self.time_step_ms, 'ms'],
+            [None,'Frame Repetition'] + [f'Sbuframe{i}' for i in range(1, max_subframes+1)]
+            ]
+
+        data += second_half
+        return data #pd.DataFrame(data)
     
     def store_config(self):
         """
@@ -864,10 +875,10 @@ class ProjectionSequence():
         for frame in self.frames:
             sum_duration = 0
             for subframe in frame:
-                sum_duration += subframe.duration
+                sum_duration += subframe.duration_ms
             
             if sum_duration != self.frame_period_ms:
                 raise ValueError(f"The sum of subframe duration ({sum_duration}) does not equal the frame period ({self.frame_period_ms}) for frame '{frame.name}'!")
             
     def __str__(self):
-        return self.store_config()
+        return str(self.store_config())

@@ -76,18 +76,19 @@ class CurrentSequenceStage(CommonRunStage):
 
 		# duration of the frames in ms
 		for row in self.script:
-			self.video_sequence['L_images'].append(int(row[1]))
+			self.video_sequence['frame_names'].append(row[0])
+			self.video_sequence['nb_repetitions_frames'].append(int(row[1]))
 			row_dat = [float(x) for x in row[2:] if x]
 
-			assert abs(sum(row_dat) - self.video_sequence['T_frame'])<1e-6, "Frames must be of the same length!"
-			self.video_sequence['T_subframes'].append(row_dat)
+			assert abs(sum(row_dat) - self.video_sequence['duration_frames_ms'])<1e-6, "Frames must be of the same length!"
+			self.video_sequence['duration_subframes_ms'].append(row_dat)
 
-		self.video_sequence['Frames'] = [deepcopy(self.video_sequence['T_subframes']) for _ in range(
+		self.video_sequence['Frames'] = [deepcopy(self.video_sequence['duration_subframes_ms']) for _ in range(
 			self.number_of_pixels)]
 
 		# Iterate on the images
 		for frame_idx in range(len(self.script)):
-			number_of_sub_frames = len(self.video_sequence['T_subframes'][frame_idx])
+			number_of_sub_frames = len(self.video_sequence['duration_subframes_ms'][frame_idx])
 			image_stack_temp = []
 
 			if self.is_generated:
@@ -101,7 +102,7 @@ class CurrentSequenceStage(CommonRunStage):
 				else:
 					sub_frame_image_path = os.path.join(Configuration().params["user_input_path"], 'image_sequence',
 														Configuration().params["video_sequence_name"],
-														f'Frame{frame_idx + 1}',
+														f"{self.video_sequence['frame_names'][frame_idx]}",
 														f'Subframe{sub_frame_idx + 1}.bmp')
 					image = plt.imread(sub_frame_image_path).astype(float)
 				
@@ -117,9 +118,9 @@ class CurrentSequenceStage(CommonRunStage):
 
 				image_stack_temp.append(im.fromarray(np.uint8(image.round())))
 
-			number_of_repetitions = self.video_sequence['L_images'][frame_idx]
+			number_of_repetitions = self.video_sequence['nb_repetitions_frames'][frame_idx]
 			self.gif_image += image_stack_temp * number_of_repetitions
-			self.gif_time += self.video_sequence['T_subframes'][frame_idx] * number_of_repetitions
+			self.gif_time += self.video_sequence['duration_subframes_ms'][frame_idx] * number_of_repetitions
 
 		self.gif_time = [x * 10 for x in self.gif_time]
 
@@ -143,13 +144,13 @@ class CurrentSequenceStage(CommonRunStage):
 			* 1E-3 / Configuration().params["number_of_diodes"]
 
 		self.max_photo_current_in_ua = float(self.script.pop(0)[1]) * photocurrent  # uA  maximum photo-current
-		self.video_sequence['T_frame'] = float(self.script.pop(0)[1])
+		self.video_sequence['duration_frames_ms'] = float(self.script.pop(0)[1])
 		self.video_sequence['time_step'] = float(self.script.pop(0)[1])
-		self.video_sequence['L_images'] = []
-		self.video_sequence['T_subframes'] = []
+		self.video_sequence['frame_names'] = []
+		self.video_sequence['nb_repetitions_frames'] = []
+		self.video_sequence['duration_subframes_ms'] = []
 		# Removes the row containing the column names (i.e. Frame 'Repetition', 'Subframe1', ..., 'SubframeN')
-		if not self.is_generated:
-			self.script = self.script[1:]
+		self.script = self.script[1:]
 
 	def add_most_illuminated_pixel(self, light_on_pixels):
 		"""

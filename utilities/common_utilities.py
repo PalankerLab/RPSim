@@ -1,6 +1,7 @@
 import os
 import pickle
 import logging
+import pandas as pd
 from pathlib import Path
 from datetime import datetime
 from distutils.dir_util import copy_tree
@@ -139,6 +140,9 @@ class CommonUtils:
 
         elif ".gif" in output_path:
             output["gif_data"][0].save(output_path, format="GIF", save_all=True,append_images=output["gif_data"][1:], duration=output["gif_time"], loop=0)
+        
+        elif ".csv" in output_path:
+            pd.DataFrame(output).to_csv(output_path, index=False, header=False)
         
         elif ".py" in output_path:
             # Move the script generated after creating the projection sequence
