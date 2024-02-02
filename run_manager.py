@@ -134,13 +134,15 @@ class RunManager:
 		:param identical_configurations: a list of paths with previous identical runs
 		:return:
 		"""
+		
+		requested_stages = self.run_stages
+		all_stages_names = StageManager.get_all_available_run_stages()
+		skipped_stages = [name for name in all_stages_names if not name in requested_stages]
+		
 		# check if provided previous runs contain the needed outputs
-		first_stage_number = StageManager.get_stage_number_by_name(self.run_stages[0])
-		if first_stage_number > 0: # If we are running the very first stage, we cannot load missing outputs as there are no stages happening before
-			for stage_number in range(first_stage_number):
-				skipped_stage = StageManager.get_stage_name_by_number(stage_number)
-				missing_outputs = self.find_missing_outputs(skipped_stage, identical_configurations)
-				self.add_missing_outputs_to_current_run(skipped_stage, missing_outputs)
+		for skipped_stage_name in skipped_stages:
+			missing_outputs = self.find_missing_outputs(skipped_stage_name, identical_configurations)
+			self.add_missing_outputs_to_current_run(skipped_stage_name, missing_outputs)
 
 	def find_missing_outputs(self, skipped_stage, identical_runs):
 		"""
@@ -195,8 +197,12 @@ class RunManager:
 
 	def copy_generated_images(self, src_directory):
 		"""
-		This function is used in the case when the pattern generation stage is skipped,
-		generate_pattern
+		This function is used in the case where the pattern generation stage is skipped.
+		The original images used to generate the GIF/video sequence are not automatically copied
+		as they are not listed in the stage's output (in _stage_data_factory()), whether the patterns
+		are generated or imported from an existing folder. If generate_pattern is false, and 
+		current_sequence_stage is executed, the original images would have been copied. But current
+		sequence stage is often skipped, so this function copies the image.  
 		"""
 		destination_dir = self.get_stage_output_directory(RunStages.pattern_generation.name)
 		Path(destination_dir).mkdir(parents=True, exist_ok=True)
