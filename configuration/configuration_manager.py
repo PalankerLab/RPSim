@@ -51,7 +51,7 @@ class Configuration(metaclass=Singleton):
 		# initialize variables for comparing configuration
 		self.skip_params = dict()
 		self.compare_params = dict()
-
+	
 		# compile regex
 		self.time_date_pattern = regex.compile("(\d{2}_\d{2}_\d{2})-(\d{4}_\d{2}_\d{2})")
 
@@ -91,6 +91,8 @@ class Configuration(metaclass=Singleton):
 				self.params["user_files_path"] = Configuration.default_path_prefix
 			self.params["user_input_path"] = os.path.join(self.params["user_files_path"], 'user_input')
 			self.params["user_output_path"] = os.path.join(self.params["user_files_path"], 'user_output')
+			# Use for uniformizing the paths between configurations 
+			self.base = self.params['user_files_path'].split(os.sep)[-1]
 
 			# make sure all provided paths are valid
 			self._extract_path_related_variables()
@@ -105,7 +107,9 @@ class Configuration(metaclass=Singleton):
 			# create a reduced dictionary with params needed for comparing runs
 			for key,value in self.params.items():
 				if not key in self.skip_params:
-					self.compare_params[key] = value
+					if self._should_be_uniformized(value):
+						value = self._uniformize_path(value)
+					self.compare_params[key] = value # TODO, here only extract the path within RPSim and change it to make it OS independent
 
 			return True
 		return False
@@ -113,7 +117,7 @@ class Configuration(metaclass=Singleton):
 	def _filter_by_key(self):
 		"""
 		This function enables to filter the configuration parameters
-		Currently the filtering only includes the model
+		Currently the filtering only includes the model and stages
 		:return:
 		"""
 		for key in list(self.initial_params.keys()):
@@ -303,7 +307,9 @@ class Configuration(metaclass=Singleton):
 			clean_stored_configuration = dict()
 			for key,value in stored_configuration.items():
 				if not key in self.skip_params:
-					clean_stored_configuration[key] = value
+					if self._should_be_uniformized(value):
+						value = self._uniformize_path(value)
+					clean_stored_configuration[key] = value # TODO here clean as well the paths to only keep from RPSim
 			# compare restored configuration to current, and append if identical
 			if not DeepDiff(clean_stored_configuration, self.compare_params):
 				self.identical_configurations.append(os.path.dirname(configuration_pickle))
@@ -333,3 +339,31 @@ class Configuration(metaclass=Singleton):
 		if directories[directory_x] > directories[directory_y]:
 			return 1
 		return -1
+	
+	def _should_be_uniformized(self, object):
+		"""
+		Used for comparing configurations when skipping stages. 
+		This function checks whether the object is path, if yes
+		it has to be uniformized for comparison. 
+		"""
+		if isinstance(object, str):
+			if '/' in object or '\\' in object:
+				return True
+		return False
+	
+	def _uniformize_path(self, path):
+		"""
+		Used when stages are skipped and configurations are compared.
+		It allows to skip stages from a previous run on a different computer (i.e. different root folder).
+		"""
+		
+		# Remove the root folders and only keep what comes starting from the base
+		path_from_base = path[path.rfind(self.base):]
+		
+		# Separate the path based on the Windows separator
+		windows_sep = path_from_base.split('\\')
+		final_sep = []
+		# Separate the the remaining path based on the Unix separator
+		[final_sep.extend(text.split('/')) for text in windows_sep]
+		# Return a uniformized path based on the current OS
+		return os.path.join(*final_sep)
