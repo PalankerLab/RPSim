@@ -608,7 +608,7 @@ class PostProcessStage(CommonRunStage):
 				# iterate iver the time points and calculate the volumetric potential matrix for each one
 				for time_point_index, time_point_value in enumerate(self.time_points_to_analyze_ms):
 					# update progress bar
-					pbar_t.set_description(f'Processing z-slices of time-point: {1 + time_point_index}/{len(self.time_points_to_analyze_ms)}...')
+					pbar_t.set_description(f'Processing the {len(self.depth_values_in_um)} z-slices of time-point: {1 + time_point_index}/{len(self.time_points_to_analyze_ms)}...')
 					pbar_t.update(1)
 					
 					# calculate matrix for this time point

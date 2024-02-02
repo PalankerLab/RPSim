@@ -9,7 +9,7 @@ class UnsupportedStage(Exception):
 
 
 class RunStages(Enum):
-	pattern_generation = ("pattern_generation", 0)
+	pattern_generation = ("pattern_generation", 0, False)
 	resistive_mesh = ("resistive_mesh", 1)
 	current_sequence = ("current_sequence", 2)
 	circuit = ("circuit", 3)

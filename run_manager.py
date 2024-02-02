@@ -6,6 +6,7 @@ certain point
 
 import os
 import shutil
+from glob import glob
 from collections import defaultdict, Counter
 from pathlib import Path
 
@@ -37,6 +38,7 @@ class RunManager:
 		"""
 		self.output_directory = output_directory
 		self.outputs_container = defaultdict(list)
+		self.copied_genreated_images = False
 
 		# if none are provided, run all stages
 		self.run_stages = list()
@@ -80,9 +82,12 @@ class RunManager:
 		return dict(zip(["constructor", "output_file_names", "output_directory_name"], stage_data))
 
 	def _should_look_for_previous_runs(self, requested_run_stages):
-		# check if number of requested stages is smaller than the total available number of stages
+		# Check if number of requested stages is smaller than the total available number of stages
 		if requested_run_stages and Counter(requested_run_stages) != Counter(StageManager.get_all_available_run_stages()):
-			# if so, check if we are missing necessary stages
+			# If we need to run the pattern generation stage only, we don't need to look for previous runs
+			if len(requested_run_stages) == 1 and RunStages.pattern_generation.name in requested_run_stages:
+				return False
+			# Check if we are missing necessary stages
 			if not all(stage in requested_run_stages for stage in self.mandatory_stages):
 				return True
 
@@ -131,7 +136,7 @@ class RunManager:
 		"""
 		# check if provided previous runs contain the needed outputs
 		first_stage_number = StageManager.get_stage_number_by_name(self.run_stages[0])
-		if first_stage_number > 0:
+		if first_stage_number > 0: # If we are running the very first stage, we cannot load missing outputs as there are no stages happening before
 			for stage_number in range(first_stage_number):
 				skipped_stage = StageManager.get_stage_name_by_number(stage_number)
 				missing_outputs = self.find_missing_outputs(skipped_stage, identical_configurations)
@@ -164,6 +169,9 @@ class RunManager:
 						if filename == output_file and (not stage_directory_name or os.path.basename(root) == stage_directory_name):
 							missing_outputs.append(os.path.join(root, filename))
 							file_found = True
+							# Special case when skipping the generated patterns, the bmp and png images are copied to the output folder in the function below
+							if skipped_stage == RunStages.pattern_generation.name:
+								self.copy_generated_images((os.path.join(run_directory, stage_directory_name)))
 							break
 
 			if not file_found:
@@ -185,4 +193,24 @@ class RunManager:
 			# add to output_directory
 			shutil.copy(output, destination_directory)
 
+	def copy_generated_images(self, src_directory):
+		"""
+		This function is used in the case when the pattern generation stage is skipped,
+		generate_pattern
+		"""
+		destination_dir = self.get_stage_output_directory(RunStages.pattern_generation.name)
+		Path(destination_dir).mkdir(parents=True, exist_ok=True)
+
+		# Do not copy the images two times
+		if not self.copied_genreated_images:
+			# Get the folders of all the generated frames
+			src_sub_dir_to_copy = glob(src_directory  + "/*/", recursive = True)
+			# Do not copy if it's empty, it's likely a failed run
+			if src_sub_dir_to_copy:
+				for src_sub_dir in src_sub_dir_to_copy:
+					# Add the folder name to the destination path
+					destination = os.path.join(destination_dir, src_sub_dir.split(os.sep)[-2])
+					shutil.copytree(src_sub_dir, destination, copy_function=shutil.copy2, dirs_exist_ok=False)
+				# Copy only once, there should not be different patterns for the same sequence name
+				self.copied_genreated_images = True
 

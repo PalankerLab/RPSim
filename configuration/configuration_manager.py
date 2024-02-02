@@ -117,16 +117,16 @@ class Configuration(metaclass=Singleton):
 		:return:
 		"""
 		for key in list(self.initial_params.keys()):
-			# filter by implant model
+			# filter by implant model and unpack the entries that are dict
 			if key in [Models.BIPOLAR.value, Models.MONOPOLAR.value]:
 				if key == self.initial_params["model"]:
 					for name, value in self.initial_params[key].items():
 						self.initial_params[name] = value
 				del self.initial_params[key]
 
-			# filter by stage
+			# add skipped parameters by stage
 			if key in StageManager.get_all_available_run_stages():
-				if key == RunStages.post_process.name:
+				if key == RunStages.post_process.name or key == RunStages.pattern_generation.name:
 					for name, value in self.initial_params[key].items():
 						self.initial_params[name] = value
 						self.skip_params[name] = value
@@ -180,7 +180,7 @@ class Configuration(metaclass=Singleton):
 			# verify that lists have identical number of values
 			if max(values_to_expand, key=len) != min(values_to_expand, key=len):
 				raise ConfigurationError(
-					"The number of values in the list arguments of the provided configuration is not identical, please fix and rerun")
+					f"The number of values in the list arguments of the provided configuration is not identical, please fix and rerun!\nNumber of elements per key: {dict(zip(keys_to_expand, map(len, values_to_expand)))}")
 
 			# expand all permutations to different configuration schemes
 			for permutation in zip(*values_to_expand):
@@ -241,7 +241,7 @@ class Configuration(metaclass=Singleton):
 				# If the number of element to parallelize is smaller than the number of cpu, reduce its size
 				if (self.params['depth_values_in_um'] is not None) and (len(self.params['depth_values_in_um']) < cpu_to_use ):
 					# TODO deterine the ideal chunksize 
-					cpu_to_use = len(self.params['depth_values_in_um']) / 2 
+					cpu_to_use = len(self.params['depth_values_in_um']) // 2
 				self.params['cpu_to_use'] = cpu_to_use
 		else:
 			self.params['cpu_to_use'] = 1
@@ -275,7 +275,7 @@ class Configuration(metaclass=Singleton):
 		:return:
 		"""
 		# Special case for projection sequences
-		self.params["projection_sequence"] = self.params["projection_sequences"].store_config()
+		self.params["projection_sequences_stored_config"] = self.params["projection_sequences"].store_config()
 		with open(os.path.join(output_directory, self.configuration_file_name), 'wb') as handle:
 			pickle.dump(self.params, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -296,7 +296,6 @@ class Configuration(metaclass=Singleton):
 		# iterate and compare
 		for configuration_pickle in configuration_pickles:
 			# restore given configuration
-			import pickle
 			with open(configuration_pickle, 'rb') as handle:
 				stored_configuration = pickle.load(handle)
 
@@ -305,7 +304,6 @@ class Configuration(metaclass=Singleton):
 			for key,value in stored_configuration.items():
 				if not key in self.skip_params:
 					clean_stored_configuration[key] = value
-
 			# compare restored configuration to current, and append if identical
 			if not DeepDiff(clean_stored_configuration, self.compare_params):
 				self.identical_configurations.append(os.path.dirname(configuration_pickle))

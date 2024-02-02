@@ -1,6 +1,5 @@
 import pickle
 import matplotlib.pyplot as plt
-import pandas as pd
 import numpy as np
 import os
 import warnings
@@ -832,7 +831,7 @@ class ProjectionSequence():
     
     def get_script(self):
         """
-        Returns a Panda dataframe structured similarly to the script used with pre-existing patterns
+        Returns a list of list structured similarly to the script used with pre-existing patterns
         """
         
         second_half = []
@@ -855,7 +854,7 @@ class ProjectionSequence():
             ]
 
         data += second_half
-        return data #pd.DataFrame(data)
+        return data
     
     def store_config(self):
         """
