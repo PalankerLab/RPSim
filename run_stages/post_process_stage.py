@@ -2,6 +2,7 @@ import glob
 import multiprocessing
 import os
 import sys
+import warnings
 from collections import OrderedDict
 from functools import partial
 from multiprocessing.managers import SharedMemoryManager
@@ -18,6 +19,7 @@ from configuration.models import Models
 from configuration.stages import RunStages
 
 from run_stages.common_run_stage import CommonRunStage
+from utilities.common_utilities import load_csv
 
 from tqdm import tqdm
 from multiprocessing.pool import Pool
@@ -78,7 +80,8 @@ class PostProcessStage(CommonRunStage):
 		self.interpolation_resolution_ms = Configuration().params["interpolation_resolution_ms"]
 		self.pulse_extra_ms = Configuration().params["pulse_extra_ms"]
 
-		active_results = np.loadtxt(Configuration().params["r_matrix_input_file_active"], delimiter=',')
+		self.comsol_depth_values = None
+		active_results = load_csv(Configuration().params["r_matrix_input_file_active"], stage = self)
 		self.active_x = active_results[0, :]
 		self.active_voltage_mv = active_results[1:, :]
 
@@ -94,10 +97,7 @@ class PostProcessStage(CommonRunStage):
 		self.window_end_ms = self.pulse_start_time_ms + self.pulse_duration_ms + self.pulse_extra_ms
 		self.time_points_to_analyze_ms = self._get_time_sections()
     
-		# define depth resolution for human or rat, default is 1 µm resolution from 1 to 160 or 126
-		default_depth_range = 160 if "human" in Configuration().params["geometry"].lower() else 126
-		default_depth_params_um =  [x*1 for x in range(default_depth_range)]
-		self.depth_values_in_um = Configuration().params["depth_values_in_um"] if Configuration().params.get("depth_values_in_um") else default_depth_params_um
+		self._initialize_depth_values()
 
 		# initialize for symmetry, will be overriden in the bipolar case
 		self.return_x = None
@@ -111,7 +111,7 @@ class PostProcessStage(CommonRunStage):
 		if Configuration().params["model"] == Models.MONOPOLAR.value:
 			
 			# Load voltages and correct dimensions of the implant
-			V_dict = np.loadtxt(Configuration().params["r_matrix_input_file_EP_return_2D"], delimiter=',')  # mV  actually return_2D-whole
+			V_dict = load_csv(Configuration().params["r_matrix_input_file_EP_return_2D"])  # mV  actually return_2D-whole
 			self.x_frame = V_dict[0,:]
 			self.y_frame = V_dict[1,:]
 			self.V_dict_ret = V_dict[2:, :]
@@ -129,11 +129,11 @@ class PostProcessStage(CommonRunStage):
 			self.full_return_current_ua = np.array([self.simulation_stage_output[f'VrCProbe{x + 1}'] for x in range(self.number_of_pixels)]) * 1E6
 	
 			# load all needed COMSOL files
-			return_results = np.loadtxt(Configuration().params["r_matrix_input_file_return"], delimiter=',')
+			return_results = load_csv(Configuration().params["r_matrix_input_file_return"])
 			self.return_x = return_results[0, :]
 			self.return_voltage_mv = return_results[1:, :]
 
-			return_near_results = np.loadtxt(Configuration().params["r_matrix_input_file_return_near"], delimiter=',')
+			return_near_results = load_csv(Configuration().params["r_matrix_input_file_return_near"])
 			self.x_return_near = return_near_results[0, :]
 			self.y_return_near = return_near_results[1, :]
 			self.return_near_voltage_mv = return_near_results[2:, :]
@@ -161,6 +161,18 @@ class PostProcessStage(CommonRunStage):
 		if not self.average_over_pulse_duration:
 			self._interpolate_currents()
 
+	def _initialize_depth_values(self):
+
+		# define depth resolution for human or rat, default is 1 µm resolution from 1 to 160 or 126
+		default_depth_range = 160 if "human" in Configuration().params["geometry"].lower() else 126
+		default_depth_params_um =  [x*1 for x in range(default_depth_range)]
+		self.depth_values_in_um = Configuration().params["depth_values_in_um"] if Configuration().params.get("depth_values_in_um") else default_depth_params_um	
+		# TODO make more robust to non compatable z_values! 
+		if self.comsol_depth_values:
+			self.depth_indices = [self.comsol_depth_values.index(depth) if depth in self.comsol_depth_values else warnings.warn(f"The depth value requested cannot be computed {depth}!") for depth in self.depth_values_in_um]
+		else:
+			self.depth_indices = self.depth_values_in_um
+			
 	def _determine_start_pulse(sefl):
 		"""
 		TODO
@@ -466,7 +478,7 @@ class PostProcessStage(CommonRunStage):
 				# Test
 				#shared_values = multiprocessing.shared_memory.ShareableList(shared_values)
 				shared_keys = multiprocessing.shared_memory.ShareableList(params.keys())
-				shared_depth_values = multiprocessing.shared_memory.ShareableList(self.depth_values_in_um)
+				shared_depth_values = multiprocessing.shared_memory.ShareableList(self.depth_indices)
 				model = Configuration().params["model"]
 				# process the needed z-slices in parallel
 				with Pool(cpu_to_use) as pool:
@@ -482,7 +494,7 @@ class PostProcessStage(CommonRunStage):
 
 		else:
 			with tqdm(total = len(self.depth_values_in_um), file = sys.stdout) as pbar_z: # used for PROGRESS BAR
-				for z_index, z_value in enumerate(self.depth_values_in_um):
+				for z_index, z_value in enumerate(self.depth_indices):
 					# Progress bar 
 					pbar_z.set_description(f'Processing Z-slice: {1 + z_index} of time point {idx_time + 1}/{total_time}')
 					pbar_z.update(1)

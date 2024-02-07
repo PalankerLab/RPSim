@@ -1,13 +1,14 @@
 import os
+import csv
 import pickle
 import logging
+import numpy as np
 import pandas as pd
 from pathlib import Path
+import matplotlib.pyplot
 from datetime import datetime
 from distutils.dir_util import copy_tree
 from configuration.configuration_manager import Configuration
-
-import matplotlib.pyplot
 
 
 class CommonUtils:
@@ -153,7 +154,7 @@ class CommonUtils:
             with open(output_path, 'w') as f:
                 print(output, file=f)
 
-    @staticmethod
+
     def load_output(file_name):
         """
         This function loads output from a file using the provided file name
@@ -165,7 +166,7 @@ class CommonUtils:
             if suffix == 'pkl' or not suffix:
                 return pickle.load(file)
 
-    @staticmethod
+
     def strip_idx(string):
         """
 		This function removes the numerical suffix of a variable name to help classify.
@@ -173,41 +174,103 @@ class CommonUtils:
         return string.rstrip(''.join(str(kk) for kk in range(10)))
     
 
-def save_cell(path, generate_pattern):
+def get_post_process_files(file_path, rows, rows_meta_data, stage=None):
     """
-    A function which cleans the saved content of the projection sequence's generation cell. 
-    It is based on some hard coded values, it could be improved. 
-    Parameters:
-        save_cell (string): The path to the output to clean
-        generate_pattern (bool): If not generate pattern, return an empty script
-    """    
-    with open(path) as f:
-        contents = f.readlines()
+    This function is used to load the COMSOL csv files with the UCD configuration:
+    All UCD files with commented lines start with the '%' character. 
+    The contain three rows with the X, Y, and Z grids. Depending on the file X and Y 
+    are required or not. Z grid is extracted with this function. The return near file
+    
+    Returns: 
+    data (Numpy.array) with the configurations below
+    - The UCD active (common to monopolar and bipolar) & UCD return (bipolar only)
+        - The first row contains the X grid 
+        - All other rows contain voltages data
+    - The UCD return near (bipolar only) &  EP return 2D whole (monopolar only)
+        - The first row contains the X grid 
+        - The second row contains the Y grid
+        - All other rows contain voltages data
+    """
 
-        if generate_pattern:
-            # Only keep the last run from the history
-            idx_start = []
-            for idx, line in enumerate(contents):
-                if "### PLASE EDIT BELOW - DO NOT MODIFY THIS COMMENT ###" in line:
-                    idx_start.append(idx)
+    # The grids are the only lines that are not commented in the headers block, and not voltages data
+    # Reverse the boolean list, find the index of the first True occurence, and then reverse again the indices
+    last_header = len(rows_meta_data) - rows_meta_data[::-1].index(True)
+    grids = [row for row, idx in zip(rows[:last_header], rows_meta_data[:last_header]) if not idx]
 
-            idx_end = []
-            for idx, line in enumerate(contents):
-                if "### PLEASE EDIT ABOVE - DO NOT MODIFY THIS COMMENT ###" in line:
-                    idx_end.append(idx)
+    data = np.loadtxt(file_path, delimiter=',', skiprows=last_header)
 
-            if not idx_start or not idx_end:
-                raise ValueError(f"The '... - DO NOT MOVE MODIFY THIS COMMENT' lines were modified and proper saving of this cell's content could not happen!")
+    if "return_near" in file_path or "return_2D" in file_path:
+        xy_grids = np.array(grids[:1], dtype=np.float64)
+        data = np.vstack((xy_grids, data))
+    
+    # For UCD active or return
+    else: 
+        x_grid = np.array(grids[0], dtype=np.float64)
+        data = np.vstack((x_grid, data))
+        if stage and len(grids) >= 3:
+            # Load the z grid (or depths) directly into the post proces stage - pass through numpy, otherwise it is read as str
+            stage.comsol_depth_values = np.array(grids[2], dtype=np.float64).tolist()
+    
+    return data
 
-            # Convert the list back to a string
-            text = "".join(contents[idx_start[-1] + 1 : idx_end[-1]])
-        else:
-            text = 'pass'
+def get_resistive_mesh_files(file_path, rows_meta_data):
+    """
+    This function is used to load the COMSOL csv files with the EP configuration:
+    All UCD files with commented lines start with the '%' character. 
+    The contain three rows with the X, Y, and Z grids. Depending on the file X and Y 
+    are required or not. Z grid is extracted with this function. The return near file
+    
+    Returns:
+    data (Numpy.array) with the configurations below
+    - The EP Rmat (monopolar only) & EP Self (monopolar only) & UCD return neighbor (bipolar only)
+        - Only data, all headers are discarded 
+    """
+    
+    # The grids are the only lines that are not commented in the headers block, and not voltages data
+    # Reverse the boolean list, find the index of the first True occurence, and then reverse again the indices
+    last_header = len(rows_meta_data) - rows_meta_data[::-1].index(True)
+    data = np.loadtxt(file_path, delimiter=',', skiprows=last_header)
+
+    return data
+
+def load_csv(file_path, nb_rows_to_analyze=100, stage=None):
+    """
+    Loads csv files generated by COMSOL into Numpy.array. 
+    It is compatible with csv files with or without headers as 
+    long as they contain the "%" character indicating commented lines. 
+    Params:
+        file_path (str): The path to the csv file to load 
+        nb_rows_to_analyse (int): The number to rows to analyze in the csv file 
+    Returns:
+        data (Numpy.array) - the configuration varies 
+    """
+
+    rows = []
+    rows_meta_data = []
+    # Open the CSV file
+    with open(file_path, 'r', newline='') as file:
+        # Create a CSV reader
+        csv_reader = csv.reader(file)
+        # Read and print the first 20 rows
+        for row_number, row in enumerate(csv_reader):
+            rows.append(row)
+            # Check wich rows contain meta data (i.e. the ones starting with % character)
+            rows_meta_data.append(any(['%' in x for x in row]))
+
+            # Break the loop after certain number of rows
+            if row_number == nb_rows_to_analyze:
+                break
+    
+    if any(rows_meta_data):
+        if ("UCD" in file_path or  "return_2D" in file_path) and not "neighbor" in file_path:
+            data = get_post_process_files(file_path, rows, rows_meta_data, stage)
+        elif "EP" in file_path or "neighbor" in file_path:
+            data = get_resistive_mesh_files(file_path, rows_meta_data)
             
-        # Rewrite the clean content
-        f = open(path, "w")
-        f.write(text)
-        f.close()
+    else:
+        data = np.loadtxt(file_path, delimiter=',')
+        
+    return data
 
 
          
