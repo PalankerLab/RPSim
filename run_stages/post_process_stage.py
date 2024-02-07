@@ -162,17 +162,45 @@ class PostProcessStage(CommonRunStage):
 			self._interpolate_currents()
 
 	def _initialize_depth_values(self):
+		"""
+		This fucntion initializes the depth values used in the post process stage. 
+		If no depth values are provided, it defaults to a 1 µm resolution from 0 to 160 for human 
+		and 0 to 126 for rats. 
 
+		Then the function matches the requested depth values to the ones available in the COMSOL files.
+		These values should also span from 0 to 126/160 with a 1 µm increment, but it may change in the future.
+		
+		self.depth_indices (list(int)): contains the indices of the requested depth values in COMSOL files
+		"""
 		# define depth resolution for human or rat, default is 1 µm resolution from 1 to 160 or 126
 		default_depth_range = 160 if "human" in Configuration().params["geometry"].lower() else 126
 		default_depth_params_um =  [x*1 for x in range(default_depth_range)]
 		self.depth_values_in_um = Configuration().params["depth_values_in_um"] if Configuration().params.get("depth_values_in_um") else default_depth_params_um	
-		# TODO make more robust to non compatable z_values! 
+		
 		if self.comsol_depth_values:
-			self.depth_indices = [self.comsol_depth_values.index(depth) if depth in self.comsol_depth_values else warnings.warn(f"The depth value requested cannot be computed {depth}!") for depth in self.depth_values_in_um]
+			new_values = [(self.comsol_depth_values.index(depth), depth) if depth in self.comsol_depth_values else self._find_nearest_depth(depth) for depth in self.depth_values_in_um]
+			# Unpack indices and values
+			self.depth_indices, updated_depth_values = zip(*new_values)
+			# Convert back to list and remove duplicates (if any) 
+			self.depth_indices, self.depth_values_in_um = sorted(list(set(self.depth_indices))), sorted(list(set(updated_depth_values)))
+
 		else:
 			self.depth_indices = self.depth_values_in_um
 			
+	def _find_nearest_depth(self, depth):
+		"""
+		If the requested depth value by the user does not exist, this function
+		will find the nearested value.
+
+		Params: depth (float): the requested depth 
+		Returns: idx_nearest (int): the idx of the nearest depth value in COMSOL files
+		"""
+		dist = np.abs(np.array(self.comsol_depth_values) - depth)
+		idx_nearest = np.argmin(dist)
+		depth_nearest = self.comsol_depth_values[idx_nearest]
+		warnings.warn(f"The requested depth value {depth} is not available. Using the nearest value instead: {depth_nearest}.")
+		return idx_nearest, depth_nearest
+	
 	def _determine_start_pulse(sefl):
 		"""
 		TODO
