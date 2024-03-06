@@ -484,7 +484,7 @@ class PostProcessStage(CommonRunStage):
 		"""
 	
 		# Get the currents and time vector for the time section of interst  
-		active_current_ua, return_current_ua, time_vector = self._get_currents_for_time_averaging(start_time, self.averaging_resolution_ms)		
+		active_current_ua, return_current_ua, time_vector = self._get_currents_for_time_averaging(start_time_ms, end_time_ms)		
 		
 		# Time averaging in the frame of interest. The width of the window depends on the averaging_resolution_ms
 		if time_vector.sum() > 1:
