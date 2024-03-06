@@ -279,7 +279,8 @@ class Configuration(metaclass=Singleton):
 		:return:
 		"""
 		# Special case for projection sequences
-		self.params["projection_sequences_stored_config"] = self.params["projection_sequences"].store_config()
+		if self.params["generate_pattern"]:
+			self.params["projection_sequences_stored_config"] = self.params["projection_sequences"].store_config()
 		with open(os.path.join(output_directory, self.configuration_file_name), 'wb') as handle:
 			pickle.dump(self.params, handle, protocol=pickle.HIGHEST_PROTOCOL)
 

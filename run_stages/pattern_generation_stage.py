@@ -249,6 +249,11 @@ class ImagePattern():
         """
         Convert the user position to the actual position where the object should be located in the final image,
         taking into account the offset of the bouding box for correct centering.
+
+        In µm unit, the image's center is (0, 0), with negative values allowed. However, in Python the matrices
+        are indexed with positive integers. So we have to convert to image pixels, shift and round the coordinates.
+        Pay attention to Pyhton indexing, the Y-axis is inverted, up-down. 
+
             Parameters:
                 user_position ((float, float)): The position with respect to the central  as multiple of the pixel size. 1.5 along X, means going toward the pixel in diagonal
                 unit (str): The unit in which the pattern's parameters are encoded, either pixel or um. 
@@ -271,12 +276,15 @@ class ImagePattern():
             else:
                 center_x += (rounded_x - np.sign(shift_x) * np.sin(np.pi * 30/180)) * self.scaled_pixel
             
-            center_y +=  shift_y * np.cos(np.pi * 30/180) * self.scaled_pixel
+            # The Y-axis is inverted in Python
+            center_y +=  -1 * shift_y * np.cos(np.pi * 30/180) * self.scaled_pixel
         
         elif unit == 'um':
             center_x, center_y = user_position
-            center_x *= self.image_pixel_scale
-            center_y *= self.image_pixel_scale 
+            # Convert to image pixel, and shift to positive space coordinates
+            # With Pyhton the Y-axis is inverted, up-down
+            center_x = center_x * self.image_pixel_scale + self.width / 2
+            center_y = -1*center_y * self.image_pixel_scale + self.height / 2
         
         # Take into account the offset due to the object size, as PIL aligns 
         # from the top-left corner and not from the center of the object
