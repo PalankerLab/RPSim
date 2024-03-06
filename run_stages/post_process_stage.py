@@ -347,9 +347,11 @@ class PostProcessStage(CommonRunStage):
 		
 		# All in ms
 		actual_time_vector = self.simulation_stage_output['time'] * 1E3 if self.average_over_pulse_duration else self.interpolated_pulse_time_ms
-		shifted_time_vector = actual_time_vector - start_time		
+		shifted_time_vector = actual_time_vector - start_time	
+		# TODO remove the shifted vectors and use the actual values as now we have both time_start and time_end	
+		shifted_end = end_time - start_time # Temporary fix 
 		# filter the time indices that correspond to the current time window
-		time_indices_to_include = (shifted_time_vector > 1e-6) & (shifted_time_vector < end_time)
+		time_indices_to_include = (shifted_time_vector > 1e-6) & (shifted_time_vector < shifted_end)
 		time_vector = shifted_time_vector[time_indices_to_include]
 		
 		# Get the correct currents depending on the time analysis
