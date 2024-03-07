@@ -114,7 +114,7 @@ class ImagePattern():
 
         self.pixel_size = pixel_size
         suffix = Configuration().params["pixel_size_suffix"] # Whether we use the large file "_lg" or not
-        self.font_path = os.path.abspath("../RPSim/utilities/Sloan.otf") if Configuration().params["font_path"] is None else Configuration().params["font_path"]
+        self.font_path = os.path.abspath("../RPSim/utilities/Sloan.otf") if Configuration().params.get("font_path") is None else Configuration().params["font_path"]
 
         self.implant_layout = self.load_file(f"Grid_PS{self.pixel_size}{suffix}.png")
         self.pixel_labels = self.load_file(f"pixel_label_PS{self.pixel_size}{suffix}.pkl")
