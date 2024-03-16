@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import numpy as np
+import warnings
 
 from configuration.configuration_manager import Configuration
 from run_stages.common_run_stage import CommonRunStage
@@ -75,22 +76,28 @@ class PlotResultsStage(CommonRunStage):
 		# Plot the location of the electrodes
 		fig3 = self.generate_electrodes_position(pixel_labels, central_electrode, edge_electrode, most_illuminated_electrode) 
 		output_figures.append(fig3)
-		
+
 		# Create an empty figure because the run manager expects four figures
 		fig4 = plt.figure()
 		if RunStages.post_process.name in self.outputs_container:
 			# extract one diode that should be on
 			time = self.post_process_results["on_diode_data"]["time_ms"]
-			on_diodes = list(self.post_process_results["on_diode_data"].keys())
-			one_on_diode = on_diodes[5]
+			on_diodes = list(self.post_process_results["on_diode_data"].keys()) # Todo automate in case less than five pixels are illuminated below the threshold!
+			n_diodes_above_threshold = len(on_diodes)
+			if n_diodes_above_threshold > 0:
+				idx = int(np.random.uniform(0, n_diodes_above_threshold))
+				one_on_diode = on_diodes[idx]
 			
-			# plot this diode
-			plt.plot(time, self.post_process_results["on_diode_data"][one_on_diode]["current"], linewidth=1)
-			plt.ylabel("Current on diode {} (mV)".format(one_on_diode))
-			plt.xlabel("Time (ms)")
-			plt.grid()
-		output_figures.append(fig4)
-		fig3.show()
+				# plot this diode
+				plt.plot(time, self.post_process_results["on_diode_data"][one_on_diode]["current"], linewidth=1)
+				plt.ylabel("Current on diode {} (mV)".format(one_on_diode))
+				plt.xlabel("Time (ms)")
+				plt.grid()
+			
+				output_figures.append(fig4)
+				
+			else:
+				warnings.warn(f"No diode were illuminated above the provided theshold {Configuration().params['on_diode_threshold_mV']}. Could not plot on diode.")
 
 		return output_figures
 
