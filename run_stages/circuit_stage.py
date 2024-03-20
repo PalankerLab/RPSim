@@ -62,8 +62,11 @@ class CircuitStage(CommonRunStage):
 		# add compensation matrix, if requested
 		self.G_comp_flag = False
 		Gs_new = 1 / Configuration().params['shunt_resistance'] if Configuration().params['shunt_resistance'] else 0
-		if Configuration().params["model"] == Models.MONOPOLAR.value and Configuration().params['r_matrix_simp_ratio'] < 1:
-			imag_basis = np.array(self.video_sequence["Frames"]).reshape((self.number_of_pixels, -1))
+		if Configuration().params['r_matrix_simp_ratio'] < 1:
+			if Configuration().params["model"]== Models.BIPOLAR.value:
+				imag_basis = np.array(self.video_sequence["Frames"]).reshape((self.number_of_pixels*2, -1))
+			if Configuration().params["model"] == Models.MONOPOLAR.value:
+				imag_basis = np.array(self.video_sequence["Frames"]).reshape((self.number_of_pixels, -1))
 			col_norm = np.linalg.norm(imag_basis, axis=0)
 			imag_basis = imag_basis[:, col_norm > 1E-6]
 			(self.resistive_mesh, self.G_comp) = Rmat_simp(Rmat=self.resistive_mesh,
@@ -191,9 +194,13 @@ class CircuitStage(CommonRunStage):
 												   px_idx + self.number_of_pixels - 1, px_idx + self.number_of_pixels - 1]))
 				# connections between each pair of active and return
 				for cross_idx in range(1, self.number_of_pixels + 1):
+					R_cross = self.resistive_mesh[px_idx - 1, cross_idx + self.number_of_pixels - 1]
+					if np.isnan(R_cross):
+						continue
 					self.circuit.R(f'ar{cross_idx}_{px_idx}', f'Saline{cross_idx}', f'rSaline{px_idx}',
-								   "{:.3e}".format(
-									   self.resistive_mesh[px_idx - 1, cross_idx + self.number_of_pixels - 1]))
+						"{:.3e}".format(R_cross))
+
+			# 
 
 			# now define the interconnected resistor mesh
 			for cross_idx in range(1, px_idx):
@@ -204,9 +211,11 @@ class CircuitStage(CommonRunStage):
 				self.circuit.R(f'{cross_idx}_{px_idx}', f'Saline{cross_idx}', f'Saline{px_idx}', "{:.3e}".format(R))
 				if self.is_bipolar:
 					# interconnection among the return electrodes
+					R = self.resistive_mesh[px_idx + self.number_of_pixels - 1, cross_idx + self.number_of_pixels - 1]
+					if np.isnan(R):
+						continue
 					self.circuit.R(f'r{cross_idx}_{px_idx}', f'rSaline{cross_idx}', f'rSaline{px_idx}',
-								   "{:.3e}".format(self.resistive_mesh[
-													   px_idx + self.number_of_pixels - 1, cross_idx + self.number_of_pixels - 1]))
+								   "{:.3e}".format(R))
 
 		# Conductance matrix compensation after thresholding:
 		if self.G_comp_flag:
