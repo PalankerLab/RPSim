@@ -136,7 +136,7 @@ class CommonUtils:
             with open(output_path, 'wb') as handle:
                 pickle.dump(output, handle, protocol=pickle.HIGHEST_PROTOCOL)
         # store as image file
-        elif ".png" in output_path or ".jpg" in output_path:
+        elif (".png" in output_path or ".jpg" in output_path) and output:
             output.savefig(output_path)
 
         elif ".gif" in output_path:

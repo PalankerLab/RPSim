@@ -130,7 +130,7 @@ class Configuration(metaclass=Singleton):
 
 			# add skipped parameters by stage
 			if key in StageManager.get_all_available_run_stages():
-				if key == RunStages.post_process.name or key == RunStages.pattern_generation.name:
+				if key == RunStages.post_process.name or key == RunStages.pattern_generation.name or key == RunStages.plot_results.name:
 					for name, value in self.initial_params[key].items():
 						self.initial_params[name] = value
 						self.skip_params[name] = value

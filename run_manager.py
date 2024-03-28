@@ -75,7 +75,7 @@ class RunManager:
 			stage_data = PostProcessStage, ["{}.pkl".format(Configuration().params["video_sequence_name"])], \
 				RunStages.post_process.name
 		elif stage == RunStages.plot_results.name:
-			stage_data =  PlotResultsStage, ["diode_voltage_vs_time.png", "current_vs_time.png", "pixels_location.png", "on_diode_pulse.png"], ""
+			stage_data =  PlotResultsStage, ["diode_voltage_vs_time.png", "current_vs_time.png", "pixels_location.png", "on_diode_pulse.png", "heatmap_currents.png","field_cross_section.png"], ""
 		else:
 			raise KeyError("The requested run stage is not supported")
 
