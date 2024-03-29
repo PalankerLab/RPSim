@@ -299,8 +299,8 @@ request, or contact our lab via the provided website!
 ## Related Publications
 Please refer to the following publications for more information:
 
-1. [Wang, Bing-Yi, et al. "Electronic “photoreceptors” enable prosthetic vision with acuity matching the natural 
-resolution in rats." *bioRxiv* (2021).](https://doi.org/10.1101/2021.07.12.452093)
+1. [Chen, Zhijie Charles, et al. "Photovoltaic implant simulator reveals resolution limits in subretinal prosthesis." Journal of neural engineering 19.5 (2022): 055008.](https://doi.org/10.1088/1741-2552/ac8ed8)
+2. [Wang, Bing-Yi, et al. "Electronic photoreceptors enable prosthetic visual acuity matching the natural resolution in rats." Nature communications 13.1 (2022): 6627.](https://doi.org/10.1038/s41467-022-34353-y)
 
 ## License
 
