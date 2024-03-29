@@ -237,6 +237,11 @@ class Configuration(metaclass=Singleton):
 			image_label = pickle.load(f)
 			self.params["number_of_pixels"] = image_label.max()
 
+		# If set to None, compute the theoretical photosensitive area for the given pixel size
+		if self.params['photosensitive_area'] is None:
+			self.params["photosensitive_area"] = (np.sqrt(3) / 2 * self.params["photosensitive_area_edge_to_edge"] ** 2 \
+										- np.pi * self.params["active_electrode_radius"] ** 2)
+		
 		# Determining the number of cpu to use
 		if self.params['multiprocessing']:
 			if self.params['cpu_to_use'] is None:

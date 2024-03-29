@@ -54,11 +54,8 @@ class CircuitStage(CommonRunStage):
 		else:
 			self.return_to_active_area_ratio = Configuration().params["return_to_active_area_ratio"]
 
-		self.photosensitive_area = Configuration().params.get("photosensitive_area") if Configuration().params.get(
-			"photosensitive_area") \
-			else (np.sqrt(3) / 2 * Configuration().params["photosensitive_area_edge_to_edge"] ** 2 - np.pi *
-				  Configuration().params["active_electrode_radius"] ** 2)
-
+		self.photosensitive_area = Configuration().params.get("photosensitive_area") 
+		
 		# add compensation matrix, if requested
 		self.G_comp_flag = False
 		Gs_new = 1 / Configuration().params['shunt_resistance'] if Configuration().params['shunt_resistance'] else 0
