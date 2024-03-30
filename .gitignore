@@ -110,6 +110,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# VScode
+.vscode/
+
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -141,3 +144,5 @@ user_files/user_input/image_sequence/seq14_Stripe_30Hz/.DS_Store
 .DS_Store
 
 user_files/user_output/
+
+test.ipynb

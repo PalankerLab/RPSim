@@ -1,0 +1,1 @@
+This is a mulitplexed Landolt C meant to be projected onto a PS20 pattern. 
