@@ -1,0 +1,38 @@
+duration: 9.8
+intensity: 1
+frequency: 30
+subframes:
+  - target: run_stages.pattern_generation_stage.Subframe
+    params:
+      duration_ms: ${duration}
+      patterns:
+        - target: run_stages.pattern_generation_stage.Text
+          params:
+            text: "C"
+            gap_size: 6
+  - target: run_stages.pattern_generation_stage.Subframe
+    params:
+      duration_ms: 23.53333
+      patterns:
+        - target: run_stages.pattern_generation_stage.FullField
+          params:
+            fill_color: "black"
+
+list_of_frames:
+  - target: run_stages.pattern_generation_stage.Frame
+    params:
+      name: "Landolt_C_PS20"
+      repetitions: 1
+      subframes: ${subframes}
+
+list_projections:
+  - target: run_stages.pattern_generation_stage.ProjectionSequence
+    params:
+      intensity_mW_mm2: ${intensity}
+      frequency_Hz: ${frequency}
+      frames: ${list_of_frames}
+
+video_sequence_name:
+  - "Landolt_C_PS100_${frequency}Hz_2"
+
+    

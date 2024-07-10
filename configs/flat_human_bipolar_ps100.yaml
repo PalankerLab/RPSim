@@ -1,4 +1,5 @@
 generate_pattern: True
+frequency: 30
 model: 'bipolar'
 pixel_size: 100
 pixel_size_suffix: ""
@@ -19,13 +20,46 @@ shunt_resistance: 790150.0
 initial_Vactive: 0
 temperature: 37
 nominal_temperature: 25
-simulation_duration_sec: ~
+simulation_duration_sec: 0.5
 simulation_resolution_ms: ~
 user_files_path: ~
-pixel_label_input_file: ~
+pixel_label_input_file: "image_sequence/pixel_label_PS${pixel_size}${pixel_size_suffix}.pkl"
 monopolar:
-  - return_to_active_area_ratio: 5.7525
-  - r_matrix_simp_ratio: 0.1
+  return_to_active_area_ratio: 5.7525
+  r_matrix_simp_ratio: 0.1
+  r_matrix_input_file_px_pos: "r_matrix/COMSOL_results/PS${pixel_size}${pixel_size_suffix}_pos.csv"
+  r_matrix_input_file_active: "r_matrix/COMSOL_results/${geometry}/${geometry}_PS${pixel_size}_UCD_active.csv"
+  r_matrix_input_file_EP_return_2D: "r_matrix/COMSOL_results/${geometry}/${geometry}_PS${pixel_size}_EP_return_2D-whole.csv"
+  r_matrix_input_file_diagonal: "r_matrix/COMSOL_results/${geometry}/${geometry}_PS${pixel_size}_EP_self.csv" # used for resistive mesh only
+  r_matrix_input_file_non_diagonal: "r_matrix/COMSOL_results/${geometry}/${geometry}_PS${pixel_size}_EP_Rmat.csv" # used for resistive mesh only
+
 bipolar:
-  - additional_edges: 142
-  - r_matrix_simp_ratio: 0.1
+  additional_edges: 142
+  r_matrix_simp_ratio: 0.1
+  r_matrix_input_file_px_pos: "r_matrix/COMSOL_results/PS${pixel_size}${pixel_size_suffix}_pos.csv"
+  r_matrix_input_file_active: "r_matrix/COMSOL_results/${geometry}/${geometry}_PS${pixel_size}_UCD_active.csv"
+  r_matrix_input_file_return: "r_matrix/COMSOL_results/${geometry}/${geometry}_PS${pixel_size}_UCD_return.csv"
+  r_matrix_input_file_return_neighbor: "r_matrix/COMSOL_results/${geometry}/${geometry}_PS${pixel_size}_UCD_return_neighbor.csv" # used for resistive mesh only
+  r_matrix_input_file_return_near: "r_matrix/COMSOL_results/${geometry}/${geometry}_PS${pixel_size}_UCD_return_near.csv"
+pattern_generation:
+  generate_pattern: ${generate_pattern}
+
+post_process:
+  pulse_start_time_in_ms: 200
+  pulse_duration_in_ms: 9.8
+  # Related to the time dynamics analyzis
+  average_over_pulse_duration: True
+  pulse_extra_ms: 0
+  time_averaging_resolution_ms: 1
+  interpolation_resolution_ms: 0.001
+  # For improving computations speed, warning it may crash for sume configurations!
+  multiprocessing: False
+  cpu_to_use: ~ # If set to None, automatically uses 2/3 of the cpu available
+  # Related to spatial analyzis 
+  depth_values_in_um: ~ # if None, defaults to all available in model otherwise use list of list: [[0,1,5,50,155]]
+  on_diode_threshold_mV: 50
+
+plot_results:
+  plot_time_windwow_start_ms: 200.0 # If set to None, selects the post proces stage values
+  plot_time_window_end_ms: 209.8
+  plot_potential_depth_um: 60
