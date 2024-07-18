@@ -461,12 +461,14 @@ class ImagePattern():
         theta = np.deg2rad(pattern.rotation)
 
         # We want the grating to overlap the central pixel, hence offset by half the grating rotated width
-        offset_x = int( np.cos(theta) * width_grating / 2 ) + pattern.position[0] * self.scaled_pixel
+        drift = pattern.position[0] * (self.scaled_pixel if pattern.unit == 'pixel' else self.image_pixel_scale)
+        offset_x = int( np.cos(theta) * width_grating / 2 ) + drift
+        print("Offset x values: ", offset_x)
 
         # Compute the bottom left corner of the grating, from the image center to the right
         fwd_x_pos = np.arange(self.center_x - offset_x, 2 * self.width, width_grating + pitch_grating)
         # Compute the bottom left corner of the grating, from the image center to the left
-        bckwd_x_pos = np.arange(self.center_x - offset_x -(width_grating + pitch_grating), - 2 * self.width, - (width_grating + pitch_grating))
+        bckwd_x_pos = np.arange(self.center_x - offset_x - (width_grating + pitch_grating), - 2 * self.width, - (width_grating + pitch_grating))
         list_x_positions = np.hstack((bckwd_x_pos, fwd_x_pos))
 
         grating_only = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
@@ -482,6 +484,7 @@ class ImagePattern():
             points.append(self.rotate_point(x_pos + width_grating, y_h, theta))  # Bottom right
             points.append(self.rotate_point(x_pos, y_h, theta))  # Bottom left
             # Draw rotated rectangle
+            print("Polygon at point ", points)
             drawing_grating.polygon(points, fill="white", outline=None)
         
         actual_position = (0, 0)
@@ -577,7 +580,7 @@ class ImagePattern():
         drawing_projection = ImageDraw.Draw(self.projected)
         drawing_projection.rectangle([0, 0, self.width - 1, self.height - 1], outline="red", width=2)
 
-
+        plt.imshow(np.asarray(to_be_projected))
 ########################### Classes for defining the patterns ###########################   
 
 
