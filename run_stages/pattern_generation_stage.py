@@ -463,7 +463,7 @@ class ImagePattern():
         # We want the grating to overlap the central pixel, hence offset by half the grating rotated width
         drift = pattern.position[0] * (self.scaled_pixel if pattern.unit == 'pixel' else self.image_pixel_scale)
         offset_x = int( np.cos(theta) * width_grating / 2 ) + drift
-        print("Offset x values: ", offset_x)
+        # print("Offset x values: ", offset_x)
 
         # Compute the bottom left corner of the grating, from the image center to the right
         fwd_x_pos = np.arange(self.center_x - offset_x, 2 * self.width, width_grating + pitch_grating)
@@ -490,6 +490,12 @@ class ImagePattern():
         actual_position = (0, 0)
 
         return self.assemble_drawing(actual_position, grating_only)
+        # arr = np.array(res, dtype=float).shape
+        # print(arr.shape)
+        # plt.imshow(np.array(res, dtype=float))
+        # plt.title("Grating Visualization")
+        # plt.show()
+        
     
     def draw_rectangle(self, pattern, fill_color = "white"):
         """
@@ -580,7 +586,10 @@ class ImagePattern():
         drawing_projection = ImageDraw.Draw(self.projected)
         drawing_projection.rectangle([0, 0, self.width - 1, self.height - 1], outline="red", width=2)
 
-        plt.imshow(np.asarray(to_be_projected))
+        plt.imshow(np.asarray(self.projected))
+        plt.title("Grating Visualization")
+        plt.axis('off')
+        plt.show()
 ########################### Classes for defining the patterns ###########################   
 
 
