@@ -57,8 +57,8 @@ def run_rpsim(configuration=None, run_stages=None, skip_stages=None):
 
 			# print current configuration to file
 			config_table, calculated_table = configuration_manager.get_configuration_as_table()
-			RPSIM_LOGGER.info("Running the following configuration\n================User Inputs===============\n{}\n".format(config_table))
-			RPSIM_LOGGER.info("================Calculated Values===============\n{}\n".format(calculated_table))
+			RPSIM_LOGGER.info("Running the following configuration\nUser Inputs\n{}\n".format(config_table))
+			RPSIM_LOGGER.info("Calculated Values\n{}\n".format(calculated_table))
 
 			# save configuration to file as dictionary for bookkeeping purposes
 			configuration_manager.store_configuration(output_directory=output_directory)
