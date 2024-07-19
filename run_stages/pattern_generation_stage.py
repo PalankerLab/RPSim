@@ -484,7 +484,7 @@ class ImagePattern():
             points.append(self.rotate_point(x_pos + width_grating, y_h, theta))  # Bottom right
             points.append(self.rotate_point(x_pos, y_h, theta))  # Bottom left
             # Draw rotated rectangle
-            print("Polygon at point ", points)
+            # print("Polygon at point ", points)
             drawing_grating.polygon(points, fill="white", outline=None)
         
         actual_position = (0, 0)
@@ -586,8 +586,14 @@ class ImagePattern():
         drawing_projection = ImageDraw.Draw(self.projected)
         drawing_projection.rectangle([0, 0, self.width - 1, self.height - 1], outline="red", width=2)
 
+        plt.subplot(121)
         plt.imshow(np.asarray(self.projected))
-        plt.title("Grating Visualization")
+        plt.title("Pattern Visualization")
+        plt.axis('off')
+
+        plt.subplot(122)
+        plt.imshow(np.asarray(self.background_overlay))
+        plt.title("Pattern Overlayed Visualization")
         plt.axis('off')
         plt.show()
 ########################### Classes for defining the patterns ###########################   
