@@ -264,10 +264,17 @@ class Configuration(metaclass=Singleton):
 		# generate output table
 		configuration_table = PrettyTable()
 		skip_items = ['Vini_act', 'Vini_ret', 'projection_sequences'] #skip some calculated values for readability
+		calculated_items = ['cpu_to_use', 'number_of_pixels', 'photosensitive_area']
+		# sort alphabetically
+		self.params = dict(sorted(self.params.items(), key=lambda x: x[0].lower()))
+		calculated_table = PrettyTable()
 		for key, value in self.params.items():
 			if key in skip_items:
 				continue
-			configuration_table.add_row([key, value])
+			if key in calculated_items:
+				calculated_table.add_row([key, value])
+			else:
+				configuration_table.add_row([key, value])
 
 		# format table
 		configuration_table.align = "l"
@@ -275,7 +282,12 @@ class Configuration(metaclass=Singleton):
 		configuration_table.header = False
 		configuration_table.max_table_width = 168
 
-		return configuration_table
+		calculated_table.align = "l"
+		calculated_table.border = True
+		calculated_table.header = False
+		calculated_table.max_table_width = 168
+
+		return configuration_table, calculated_table
 
 	def store_configuration(self, output_directory):
 		"""
