@@ -279,13 +279,18 @@ class Configuration(metaclass=Singleton):
 		# format table
 		configuration_table.align = "l"
 		configuration_table.border = True
-		configuration_table.header = False
-		configuration_table.max_table_width = 168
+		configuration_table.header = True
+		configuration_table.field_names = ['Field', 'Value']
+		configuration_table._min_width = {'Field': 30, 'Value': 138}
+		configuration_table._max_width = {'Field': 30, 'Value': 138}
+		# configuration_table.max_table_width = 168
 
 		calculated_table.align = "l"
 		calculated_table.border = True
-		calculated_table.header = False
-		calculated_table.max_table_width = 168
+		calculated_table.header = True
+		calculated_table.field_names = ['Field', 'Value']
+		calculated_table._min_width = {'Field': 30, 'Value': 138}
+		calculated_table._max_width = {'Field': 30, 'Value': 138}
 
 		return configuration_table, calculated_table
 

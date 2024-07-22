@@ -72,6 +72,9 @@ class PatternGenerationStage(CommonRunStage):
                     # Save subframe
                     list_tmp_bmp.append((f'Subframe{int(idx+1)}', drawing_board.save_as_PIL()))
                     list_tmp_array.append(drawing_board.save_as_array())
+
+                    plt.rcParams['figure.facecolor'] = 'white'
+                    drawing_board.show(idx)
                 
                 # Save frame
                 self.dict_PIL_images[frame.name] = list_tmp_bmp
@@ -136,15 +139,15 @@ class ImagePattern():
         self.projected.show()
         return "Printed the images!"
     
-    def show(self):
+    def show(self, frame_idx):
         """
         Displays the overlay and projected image as a subplot.
         """
         fig, axes = plt.subplots(1,2, figsize=(12, 20))
         axes[0].imshow(np.array(self.background_overlay))
-        axes[0].set_title("Overlayed")
+        axes[0].set_title(f"Frame {frame_idx + 1} Overlayed")
         axes[1].imshow(np.array(self.projected))
-        axes[1].set_title("Projected")
+        axes[1].set_title(f"Frame {frame_idx + 1} Projected")
         plt.show()
 
     def save_as_PIL(self):
@@ -579,17 +582,17 @@ class ImagePattern():
         # Add the red frame around the projected image
         drawing_projection = ImageDraw.Draw(self.projected)
         drawing_projection.rectangle([0, 0, self.width - 1, self.height - 1], outline="red", width=2)
+        # plt.rcParams['figure.facecolor'] = 'white'
+        # plt.subplot(121)
+        # plt.imshow(np.asarray(self.projected))
+        # plt.title("Pattern Visualization")
+        # plt.axis('off')
 
-        plt.subplot(121)
-        plt.imshow(np.asarray(self.projected))
-        plt.title("Pattern Visualization")
-        plt.axis('off')
-
-        plt.subplot(122)
-        plt.imshow(np.asarray(self.background_overlay))
-        plt.title("Pattern Overlayed Visualization")
-        plt.axis('off')
-        plt.show()
+        # plt.subplot(122)
+        # plt.imshow(np.asarray(self.background_overlay))
+        # plt.title("Pattern Overlaid Visualization")
+        # plt.axis('off')
+        # plt.show()
 
 
 ########################### Classes for defining the patterns ###########################   
