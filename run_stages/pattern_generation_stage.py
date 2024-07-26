@@ -74,7 +74,7 @@ class PatternGenerationStage(CommonRunStage):
                     list_tmp_array.append(drawing_board.save_as_array())
 
                     plt.rcParams['figure.facecolor'] = 'white'
-                    drawing_board.show(idx)
+                    drawing_board.show(frame.name, idx)
                 
                 # Save frame
                 self.dict_PIL_images[frame.name] = list_tmp_bmp
@@ -139,15 +139,15 @@ class ImagePattern():
         self.projected.show()
         return "Printed the images!"
     
-    def show(self, frame_idx):
+    def show(self, frame_name, subframe_idx):
         """
         Displays the overlay and projected image as a subplot.
         """
+        # plt.clf()
         fig, axes = plt.subplots(1,2, figsize=(12, 20))
         axes[0].imshow(np.array(self.background_overlay))
-        axes[0].set_title(f"Frame {frame_idx + 1} Overlayed")
         axes[1].imshow(np.array(self.projected))
-        axes[1].set_title(f"Frame {frame_idx + 1} Projected")
+        plt.suptitle(f"{frame_name} Subframe {subframe_idx + 1}", y=0.62)
         plt.show()
 
     def save_as_PIL(self):

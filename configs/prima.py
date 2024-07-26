@@ -1,4 +1,4 @@
-### PRIMA PRIMA
+### PRIMA Config
 
 PRIMA = {}
 
