@@ -147,7 +147,7 @@ class ImagePattern():
         fig, axes = plt.subplots(1,2, figsize=(12, 20))
         axes[0].imshow(np.array(self.background_overlay))
         axes[1].imshow(np.array(self.projected))
-        fig.suptitle(f"{frame_name} Subframe {subframe_idx + 1}")
+        fig.suptitle(f"{frame_name} Subframe {subframe_idx + 1}", y=0.62)
         plt.show()
 
     def save_as_PIL(self):

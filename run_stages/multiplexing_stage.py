@@ -62,17 +62,17 @@ class MultiplexingStage(CommonRunStage):
         return RunStages.multiplexing.name
     
     def _show_multiplexed(self, original_img, img_list, frame_name, subframe_idx):
-        fig, ax = plt.subplots(nrows=1, ncols=len(img_list)+1, figsize=(12, 20))
+        fig, ax = plt.subplots(nrows=1, ncols=len(img_list)+1, figsize=(15, 8))
         img_list = [original_img] + img_list
         axes = ax.ravel()
         for i, img in enumerate(img_list):
-            axes[i].imshow(img)
+            axes[i].imshow(img.astype(np.uint8), vmin=0, vmax=255)
             if i == 0:
                 title = "Original"
             else:
                 title = f"Multiplexed {i}"
             axes[i].set_title(title)
-        fig.suptitle(f"{frame_name} Subframe {subframe_idx} Multiplexed Results")
+        fig.suptitle(f"{frame_name} Subframe {subframe_idx + 1} Multiplexed Results", y=0.7)
         plt.tight_layout()
         plt.show()
     
@@ -107,7 +107,7 @@ class MultiplexingStage(CommonRunStage):
                 arr = Image.fromarray((mask * deepcopy(image)).astype(np.uint8))
                 # need to draw red corner
                 drawing_projection = ImageDraw.Draw(arr)
-                drawing_projection.rectangle([start, 0, end - 1, h - 1], outline="red", width=2)
+                drawing_projection.rectangle([0, 0, w - 1, h - 1], outline="red", width=2)
                 # plt.imshow(drawing_projection)
                 # plt.show()
                 if as_PIL:
@@ -124,7 +124,7 @@ class MultiplexingStage(CommonRunStage):
                 img_PIL = Image.fromarray((mask * deepcopy(image)).astype(np.uint8))
                 # need to draw red corner
                 drawing_projection = ImageDraw.Draw(img_PIL)
-                drawing_projection.rectangle([0, start, w - 1, end - 1], outline="red", width=2)
+                drawing_projection.rectangle([0, 0, w - 1, h - 1], outline="red", width=2)
                 # plt.imshow(np.array(img_PIL))
                 # plt.show()
                 if as_PIL:
@@ -194,8 +194,6 @@ class MultiplexingStage(CommonRunStage):
             for sub_frame_idx in range(number_of_sub_frames):
                 if self.is_generated:
                     image = list_subframes[sub_frame_idx]
-                    print(type(image))
-
                 else:
                     sub_frame_image_path = os.path.join(Configuration().params["user_input_path"], 'image_sequence',
                                                         Configuration().params["video_sequence_name"],
