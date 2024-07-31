@@ -74,7 +74,7 @@ class PatternGenerationStage(CommonRunStage):
                     list_tmp_array.append(drawing_board.save_as_array())
 
                     plt.rcParams['figure.facecolor'] = 'white'
-                    # drawing_board.show(frame.name, idx)
+                    drawing_board.show(frame.name, idx)
                 
                 # Save frame
                 self.dict_PIL_images[frame.name] = list_tmp_bmp
@@ -147,7 +147,7 @@ class ImagePattern():
         fig, axes = plt.subplots(1,2, figsize=(12, 20))
         axes[0].imshow(np.array(self.background_overlay))
         axes[1].imshow(np.array(self.projected))
-        plt.suptitle(f"{frame_name} Subframe {subframe_idx + 1}", y=0.62)
+        fig.suptitle(f"{frame_name} Subframe {subframe_idx + 1}")
         plt.show()
 
     def save_as_PIL(self):

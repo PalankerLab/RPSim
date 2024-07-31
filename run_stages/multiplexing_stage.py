@@ -61,10 +61,23 @@ class MultiplexingStage(CommonRunStage):
     def stage_name(self):
         return RunStages.multiplexing.name
     
+    def _show_multiplexed(self, original_img, img_list, frame_name, subframe_idx):
+        fig, ax = plt.subplots(nrows=1, ncols=len(img_list)+1, figsize=(12, 20))
+        img_list = [original_img] + img_list
+        axes = ax.ravel()
+        for i, img in enumerate(img_list):
+            axes[i].imshow(img)
+            if i == 0:
+                title = "Original"
+            else:
+                title = f"Multiplexed {i}"
+            axes[i].set_title(title)
+        fig.suptitle(f"{frame_name} Subframe {subframe_idx} Multiplexed Results")
+        plt.tight_layout()
+        plt.show()
+    
 
     def _check_is_black(self, img):
-        plt.imshow(img)
-        plt.show()
         # print(img[:, :, 1].sum())
         # print(img[:, :, 2].sum())
         # print(img.shape)
@@ -95,8 +108,8 @@ class MultiplexingStage(CommonRunStage):
                 # need to draw red corner
                 drawing_projection = ImageDraw.Draw(arr)
                 drawing_projection.rectangle([start, 0, end - 1, h - 1], outline="red", width=2)
-                plt.imshow(drawing_projection)
-                plt.show()
+                # plt.imshow(drawing_projection)
+                # plt.show()
                 if as_PIL:
                     result.append(drawing_projection)
                 else:
@@ -108,16 +121,16 @@ class MultiplexingStage(CommonRunStage):
                 end = i + height
                 mask = np.zeros_like(image, dtype=float)
                 mask[start:end, :, :] = 1
-                arr = Image.fromarray((mask * deepcopy(image)).astype(np.uint8))
+                img_PIL = Image.fromarray((mask * deepcopy(image)).astype(np.uint8))
                 # need to draw red corner
-                drawing_projection = ImageDraw.Draw(arr)
+                drawing_projection = ImageDraw.Draw(img_PIL)
                 drawing_projection.rectangle([0, start, w - 1, end - 1], outline="red", width=2)
-
-                plt.imshow(np.array(arr))
+                # plt.imshow(np.array(img_PIL))
+                # plt.show()
                 if as_PIL:
-                    result.append(arr)
+                    result.append(img_PIL)
                 else:
-                    result.append(np.asarray(arr))
+                    result.append(np.asarray(img_PIL))
         else:
             raise NotImplementedError
         
@@ -206,6 +219,8 @@ class MultiplexingStage(CommonRunStage):
                 frame_info[frame_name][sub_frame_idx] = i + 1
 
                 list_tmp_array.extend(multiplexed_imgs_arr)
+
+                self._show_multiplexed(image, multiplexed_imgs_arr, frame_name, sub_frame_idx)
         
             # Save frame TODO: list_tmp_bmp: Subframe 1: [image1, image2, ....]
             self.dict_PIL_images_after_multiplexing[frame_name] = list_tmp_bmp
