@@ -50,7 +50,7 @@ class PatternGenerationStage(CommonRunStage):
         """
         if Configuration().params["generate_pattern"]:
 
-            ### Object based implementation
+            ###x Object based implementation
             
             projection_sequence = Configuration().params["projection_sequences"]
             self.script = projection_sequence.get_script()
@@ -74,7 +74,7 @@ class PatternGenerationStage(CommonRunStage):
                     list_tmp_array.append(drawing_board.save_as_array())
 
                     plt.rcParams['figure.facecolor'] = 'white'
-                    drawing_board.show(frame.name, idx)
+                    # drawing_board.show(frame.name, idx)
                 
                 # Save frame
                 self.dict_PIL_images[frame.name] = list_tmp_bmp
@@ -875,7 +875,7 @@ class ProjectionSequence():
             ['Light Intensity', self.intensity_mW_mm2, 'mW/mm^2'],
             ['Frame period', self.frame_period_ms, 'ms'],
             ['Time step', self.time_step_ms, 'ms'],
-            [None,'Frame Repetition'] + [f'Sbuframe{i}' for i in range(1, max_subframes+1)]
+            [None,'Frame Repetition'] + [f'Subframe{i}' for i in range(1, max_subframes+1)]
             ]
 
         data += second_half

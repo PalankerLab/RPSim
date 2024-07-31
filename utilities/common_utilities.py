@@ -105,6 +105,22 @@ class CommonUtils:
                     subframe[1][0].save(overlay_path)
                     subframe[1][1].save(projected_path)
             return 
+        
+        if file_name is not None and "multiplexed.bmp" in file_name:
+            Path(os.path.dirname(output_directory)).mkdir(parents=True, exist_ok=True)
+
+            for img_name, subframes in output.items():
+                # Create the path and folder with the image name
+                output_path = os.path.join(output_directory, img_name + "/")
+                Path(os.path.dirname(output_path)).mkdir(parents=True, exist_ok=True)
+
+                for subframe in subframes:
+                    # subframe is (str, (PIL, PIL)) - with the first image the overlay, second projected
+                    # overlay_path = os.path.join(output_path, subframe[0] + "_overlay.png")
+                    projected_path = os.path.join(output_path, subframe[0] + "_multiplexed.bmp")
+                    subframe[1].save(projected_path)
+                    # subframe[1][1].save(projected_path)
+            return 
 
         # if the output is a directory, just copy to output folder
         if isinstance(output, str) and os.path.isdir(output):

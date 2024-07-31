@@ -29,6 +29,8 @@ class CurrentSequenceStage(CommonRunStage):
 
 		# Whether to look for generated patterns or pre-existing patterns
 		self.is_generated = Configuration().params["generate_pattern"]
+
+		self.multiplexed = Configuration().params['multiplex']
 		
 		# define paths
 		if self.is_generated:
@@ -68,8 +70,10 @@ class CurrentSequenceStage(CommonRunStage):
 		:param kwargs:
 		:return:
 		"""
-		
-		if self.is_generated:
+		# TODO: multiplex added here
+		if self.multiplexed:
+			list_images = self.outputs_container[RunStages.multiplexing.name][0]
+		elif self.is_generated:
 			#list_images = self.outputs_container["pattern_generation"][0]
 			list_images = self.outputs_container[RunStages.pattern_generation.name][0]
 		self._parse_script_file()
@@ -91,13 +95,14 @@ class CurrentSequenceStage(CommonRunStage):
 			number_of_sub_frames = len(self.video_sequence['duration_subframes_ms'][frame_idx])
 			image_stack_temp = []
 
-			if self.is_generated:
+			# TODO: multiplexed here
+			if self.is_generated or self.multiplexed:
 				list_subframes = list_images[frame_idx]
 			
 			# Iterate on the subframes
 			for sub_frame_idx in range(number_of_sub_frames):
 
-				if self.is_generated:
+				if self.is_generated or self.multiplexed:
 					image = list_subframes[sub_frame_idx]
 				else:
 					sub_frame_image_path = os.path.join(Configuration().params["user_input_path"], 'image_sequence',
@@ -130,7 +135,10 @@ class CurrentSequenceStage(CommonRunStage):
 		"""
 		This function reads the sequence definition from the csv spec file, including time information and irradiance.
 		"""
-		if self.is_generated:
+		# TODO: multiplex changes here
+		if self.multiplexed:
+			self.script = self.outputs_container[RunStages.multiplexing.name][1]
+		elif self.is_generated:
 			self.script = self.outputs_container[RunStages.pattern_generation.name][1]
 		else:
 			# open csv file with video sequence description

@@ -10,12 +10,13 @@ class UnsupportedStage(Exception):
 
 class RunStages(Enum):
 	pattern_generation = ("pattern_generation", 0, False)
-	resistive_mesh = ("resistive_mesh", 1)
-	current_sequence = ("current_sequence", 2)
-	circuit = ("circuit", 3)
-	simulation = ("simulation", 4)
-	post_process = ("post_process", 5, False)
-	plot_results = ("plot_results", 6, False)
+	multiplexing = ("multiplexing", 1, False)
+	resistive_mesh = ("resistive_mesh", 2)
+	current_sequence = ("current_sequence", 3)
+	circuit = ("circuit", 4)
+	simulation = ("simulation", 5)
+	post_process = ("post_process", 6, False)
+	plot_results = ("plot_results", 7, False)
 
 	def __new__(cls, value, number, mandatory=True):
 		run_stage = object.__new__(cls)
