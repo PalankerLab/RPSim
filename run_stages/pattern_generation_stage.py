@@ -901,7 +901,7 @@ class ProjectionSequence():
             for subframe in frame:
                 sum_duration += subframe.duration_ms
             
-            if sum_duration != self.frame_period_ms:
+            if round(sum_duration, 3) != round(self.frame_period_ms, 3):
                 raise ValueError(f"The sum of subframe duration ({sum_duration}) does not equal the frame period ({self.frame_period_ms}) for frame '{frame.name}'!")
             
     def __str__(self):

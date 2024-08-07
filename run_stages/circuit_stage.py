@@ -61,6 +61,9 @@ class CircuitStage(CommonRunStage):
 		Gs_new = 1 / Configuration().params['shunt_resistance'] if Configuration().params['shunt_resistance'] else 0
 		if Configuration().params['r_matrix_simp_ratio'] < 1:
 			if Configuration().params["model"]== Models.BIPOLAR.value:
+				print(self.number_of_pixels)
+				print(np.array(self.video_sequence["Frames"]).shape)
+				print(self.video_sequence['Frames'][0])
 				imag_basis = np.array(self.video_sequence["Frames"]).reshape((self.number_of_pixels*2, -1))
 			if Configuration().params["model"] == Models.MONOPOLAR.value:
 				imag_basis = np.array(self.video_sequence["Frames"]).reshape((self.number_of_pixels, -1))
@@ -214,21 +217,17 @@ class CircuitStage(CommonRunStage):
 					self.circuit.R(f'r{cross_idx}_{px_idx}', f'rSaline{cross_idx}', f'rSaline{px_idx}',
 								   "{:.3e}".format(R))
 
+		# Conductance matrix compensation after thresholding:
 		if self.G_comp_flag:
 			for comp_idx in range(self.G_comp['v_basis'].shape[1]):
 				self.circuit.R(f'comp{comp_idx}', f'comp{comp_idx}', self.circuit.gnd, 1)
 				for px_idx in range(1, self.number_of_pixels + 1):
 					self.circuit.VCCS(f'px{px_idx}_comp{comp_idx}', self.circuit.gnd, f'comp{comp_idx}',
-									f'Saline{px_idx}', f'Saline{0}',
-									"{:.3e}".format(self.G_comp['v_basis'][px_idx - 1, comp_idx]))
+									  f'Saline{px_idx}', f'Saline{0}',
+									  "{:.3e}".format(self.G_comp['v_basis'][px_idx - 1, comp_idx]))
 					self.circuit.VCCS(f'comp{comp_idx}_px{px_idx}', f'Saline{px_idx}', f'Saline{0}',
-									f'comp{comp_idx}', self.circuit.gnd,
-									"{:.3e}".format(self.G_comp['i_basis'][px_idx - 1, comp_idx]))
-					if self.is_bipolar:
-							number_of_returns = self.number_of_pixels
-							for ret_idx in range(1, number_of_returns + 1):
-								self.circuit.VCCS(f'ret{ret_idx}_comp{comp_idx}', self.circuit.gnd, f'comp{comp_idx}',
-												f'rSaline{ret_idx}', f'Saline{0}', "{:.3e}".format(self.G_comp['v_basis'][self.number_of_pixels + ret_idx-1, comp_idx]))
-								self.circuit.VCCS(f'comp{comp_idx}_ret{ret_idx}', f'rSaline{ret_idx}', f'Saline{0}',
-												f'comp{comp_idx}', self.circuit.gnd, "{:.3e}".format(self.G_comp['i_basis'][self.number_of_pixels + ret_idx-1, comp_idx]))
+									  f'comp{comp_idx}', self.circuit.gnd,
+									  "{:.3e}".format(self.G_comp['i_basis'][px_idx - 1, comp_idx]))
+
 		return self.circuit
+

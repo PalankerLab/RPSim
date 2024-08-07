@@ -102,18 +102,15 @@ class MultiplexingStage(CommonRunStage):
             for i in range(0, w-width+1, width):
                 start = i
                 end = i + width
-                mask = np.zeros_like(image, dtype=bool)
-                mask[:, start:end, :] = True
-                arr = Image.fromarray((mask * deepcopy(image)).astype(np.uint8))
-                # need to draw red corner
-                drawing_projection = ImageDraw.Draw(arr)
+                mask = np.zeros_like(image, dtype=float)
+                mask[:, start:end, :] = 1
+                img_PIL = Image.fromarray((mask * deepcopy(image)).astype(np.uint8))
+                drawing_projection = ImageDraw.Draw(img_PIL)
                 drawing_projection.rectangle([0, 0, w - 1, h - 1], outline="red", width=2)
-                # plt.imshow(drawing_projection)
-                # plt.show()
                 if as_PIL:
-                    result.append(drawing_projection)
+                    result.append(img_PIL)
                 else:
-                    result.append(np.asarray(drawing_projection))
+                    result.append(np.asarray(img_PIL))
         elif alg == 'horizontal':
             height = h // num_split
             for i in range(0, h-height+1, height):
@@ -122,11 +119,8 @@ class MultiplexingStage(CommonRunStage):
                 mask = np.zeros_like(image, dtype=float)
                 mask[start:end, :, :] = 1
                 img_PIL = Image.fromarray((mask * deepcopy(image)).astype(np.uint8))
-                # need to draw red corner
                 drawing_projection = ImageDraw.Draw(img_PIL)
                 drawing_projection.rectangle([0, 0, w - 1, h - 1], outline="red", width=2)
-                # plt.imshow(np.array(img_PIL))
-                # plt.show()
                 if as_PIL:
                     result.append(img_PIL)
                 else:

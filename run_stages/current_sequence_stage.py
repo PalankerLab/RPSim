@@ -3,7 +3,7 @@ import csv
 import pickle
 from copy import deepcopy
 import matplotlib.pyplot as plt
-
+from configuration.models import Models
 from configuration.configuration_manager import Configuration
 
 from configuration.stages import RunStages
@@ -30,7 +30,7 @@ class CurrentSequenceStage(CommonRunStage):
 		# Whether to look for generated patterns or pre-existing patterns
 		self.is_generated = Configuration().params["generate_pattern"]
 
-		self.multiplexed = Configuration().params['multiplex']
+		self.multiplexed = 'multiplex' in Configuration().params and Configuration().params['multiplex']
 		
 		# define paths
 		if self.is_generated:
@@ -84,11 +84,26 @@ class CurrentSequenceStage(CommonRunStage):
 			self.video_sequence['nb_repetitions_frames'].append(int(row[1]))
 			row_dat = [float(x) for x in row[2:] if x]
 
-			assert abs(sum(row_dat) - self.video_sequence['duration_frames_ms'])<1e-6, "Frames must be of the same length!"
+			assert abs(sum(row_dat) - self.video_sequence['duration_frames_ms'])<1e-6, "Frames must be of the same length!" # TODO: change rounding error
 			self.video_sequence['duration_subframes_ms'].append(row_dat)
+			print(len(row_dat))
+			print(row_dat)
+
+		print(np.array(self.video_sequence['duration_subframes_ms']).shape)
 
 		self.video_sequence['Frames'] = [deepcopy(self.video_sequence['duration_subframes_ms']) for _ in range(
 			self.number_of_pixels)]
+		
+		if Models.BIPOLAR.value:
+			self.video_sequence['Frames'] = np.array(self.video_sequence['Frames'][np.newaxis, :, :, :], 2, axis=0)
+		print(self.video_sequence['Frames'].shape)
+
+
+		
+		print(np.array(self.video_sequence['Frames']).shape)
+		print(len(self.video_sequence['duration_subframes_ms']))
+
+
 
 		# Iterate on the images
 		for frame_idx in range(len(self.script)):
