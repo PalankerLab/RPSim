@@ -94,14 +94,12 @@ class CurrentSequenceStage(CommonRunStage):
 		self.video_sequence['Frames'] = [deepcopy(self.video_sequence['duration_subframes_ms']) for _ in range(
 			self.number_of_pixels)]
 		
-		if Models.BIPOLAR.value:
-			self.video_sequence['Frames'] = np.array(self.video_sequence['Frames'][np.newaxis, :, :, :], 2, axis=0)
-		print(self.video_sequence['Frames'].shape)
+
 
 
 		
-		print(np.array(self.video_sequence['Frames']).shape)
-		print(len(self.video_sequence['duration_subframes_ms']))
+		# print(np.array(self.video_sequence['Frames']).shape)
+		# print(len(self.video_sequence['duration_subframes_ms']))
 
 
 
@@ -138,11 +136,17 @@ class CurrentSequenceStage(CommonRunStage):
 
 				image_stack_temp.append(im.fromarray(np.uint8(image.round())))
 
+
+
 			number_of_repetitions = self.video_sequence['nb_repetitions_frames'][frame_idx]
 			self.gif_image += image_stack_temp * number_of_repetitions
 			self.gif_time += self.video_sequence['duration_subframes_ms'][frame_idx] * number_of_repetitions
 
 		self.gif_time = [x * 10 for x in self.gif_time]
+		if Models.BIPOLAR.value:
+			temp = deepcopy(np.array(self.video_sequence['Frames']))
+			self.video_sequence['Frames'] = np.concatenate([temp, np.array(self.video_sequence['Frames'])], axis=0)
+			print(self.video_sequence['Frames'].shape)
 
 		return [self.video_sequence, {"gif_data": self.gif_image, "gif_time": self.gif_time}, self.determine_most_illuminated(), self.image_sequence_input_folder]
 	
