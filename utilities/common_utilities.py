@@ -117,7 +117,9 @@ class CommonUtils:
                 for subframe in subframes:
                     # subframe is (str, (PIL, PIL)) - with the first image the overlay, second projected
                     # overlay_path = os.path.join(output_path, subframe[0] + "_overlay.png")
-                    projected_path = os.path.join(output_path, subframe[0] + "_multiplexed.bmp")
+                    import matplotlib.pyplot as plt
+                    projected_path = os.path.join(output_path, subframe[0] + ".bmp")
+                    plt.imshow(np.array(subframe[1]))
                     subframe[1].save(projected_path)
                     # subframe[1][1].save(projected_path)
             return 

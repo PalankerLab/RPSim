@@ -15,25 +15,14 @@ from run_stages.common_run_stage import CommonRunStage
 
 class MultiplexingStage(CommonRunStage):
     """
-    This class implements the automated pattern generation from a configuration file.
-
-    Attributes:
-        pixel_size (int): The pixel size in micron (we refer to pixel as the hexagonal unit with photodiode, active and return electrode)
-        implant_layout (PIL.Image): The image of the pixel layout
-        pixel_labels (Numpy.array): Array having the same size as implant_layout. Each entry corresponds to either 0 or the pixel label (the active and return electrodes are also labeled 0, only the photodiode is non-zero)
-        
-        center_x, center_y (int, int): The pixels coordinate in implant_layout corresponding the center of the central hexagon
-        width, height (int, int): The size in pixels (and microns) of the implant_layout image
-        
-        backgroud_overlay (PIL.Image): The pixel pattern as background, and the projected image as overlay
-        projected (PIL.Image): A black screen as background, and the projected image as overlay
+        Multiplexing Stage
     """
 
     def __init__(self, *args):
         super().__init__(*args)
 
         self.list_subframes_as_ndarray_after_multiplexing = []
-        self.script = None
+        self.script = []
         self.dict_PIL_images_after_multiplexing = {}
 
         self.is_generated = Configuration().params["generate_pattern"]
@@ -45,11 +34,12 @@ class MultiplexingStage(CommonRunStage):
         else:
             # When loading existing patterns, the source folder is in the input path
             self.image_sequence_input_folder = os.path.join(Configuration().params["user_input_path"], "image_sequence", self.output_directory_name)
-            assert os.path.exists(self.image_sequence_input_folder), "Please provide image sequence input folder for multiplexing!"
-        
+
         if self.is_generated:
             self.script = self.outputs_container[RunStages.pattern_generation.name][1]
         else:
+            self.sequence_script_input_file = os.path.join(self.image_sequence_input_folder, "seq_time.csv")
+            print(f"Pattern generation skipped.. Using existing files at {self.sequence_script_input_file}")
             # open csv file with video sequence description
             with open(self.sequence_script_input_file, 'r') as f:
                 csv_file = csv.reader(f)
@@ -145,7 +135,8 @@ class MultiplexingStage(CommonRunStage):
             total_frames = 0
             new_row = [frame_name, repetition]
             for idx in info[frame_name]:
-                subframe_total_duration = old_row[2+idx]
+                print(old_row[2+idx])
+                subframe_total_duration = float(old_row[2+idx])
                 # print(info[frame_name][idx])
                 num_multiplexed = info[frame_name][idx] # split into these sub-subframes
                 total_frames += num_multiplexed
@@ -177,14 +168,14 @@ class MultiplexingStage(CommonRunStage):
             if self.is_generated:
                 list_subframes = list_images[frame_idx]
                 # print(len(list_subframes))
-            
-            # Iterate on the subframes
+        
             frame_name = self.script[4 + frame_idx][0]
             frame_info[frame_name] = {}
 
             list_tmp_bmp = []
             list_tmp_array = []
 
+            img_idx = 0
             for sub_frame_idx in range(number_of_sub_frames):
                 if self.is_generated:
                     image = list_subframes[sub_frame_idx]
@@ -193,20 +184,27 @@ class MultiplexingStage(CommonRunStage):
                                                         Configuration().params["video_sequence_name"],
                                                         f"{frame_name}",
                                                         f'Subframe{sub_frame_idx + 1}.bmp')
+                    assert os.path.exists(sub_frame_idx), f"Sub frame image not found for frame {frame_name} suframe {sub_frame_idx + 1}"
                     image = plt.imread(sub_frame_image_path).astype(float)
-                
+                    print(f"Read image {sub_frame_image_path}")
+
+                # if black frame, no multiplex 
                 if self._check_is_black(image):
+                    print("Is black frame")
                     frame_info[frame_name][sub_frame_idx] = 1
                     # Save subframe
-                    list_tmp_bmp.append((f'Subframe{int(sub_frame_idx+1)}', Image.fromarray(image.astype(np.uint8))))
+                    list_tmp_bmp.append((f'Subframe{img_idx+1}_multiplexed', Image.fromarray(image.astype(np.uint8))))
                     list_tmp_array.append(image)
+                    img_idx += 1
                     continue
                 # print(Configuration().params)
                 multiplexed_imgs_arr = self._multiplex(image, as_PIL=False) # np format
                 multiplexed_imgs_PIL = [Image.fromarray(x) for x in multiplexed_imgs_arr] # PIL Image format
 
                 for i, img_PIL in enumerate(multiplexed_imgs_PIL):
-                    list_tmp_bmp.append((f'Subframe{int(sub_frame_idx+1)}_multiplexed_{i+1}', img_PIL))
+                    # plt.imshow(multiplexed_imgs_arr[i])
+                    list_tmp_bmp.append((f'Subframe{img_idx+1}_multiplexed', img_PIL))
+                    img_idx += 1
 
                 frame_info[frame_name][sub_frame_idx] = i + 1
 

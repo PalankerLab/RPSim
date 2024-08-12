@@ -175,6 +175,7 @@ class RunManager:
 							missing_outputs.append(os.path.join(root, filename))
 							file_found = True
 							# Special case when skipping the generated patterns, the bmp and png images are copied to the output folder in the function below
+							# TODO: changed, should not overwrite the multiplexed output
 							if skipped_stage == RunStages.pattern_generation.name:
 								self.copy_generated_images((os.path.join(run_directory, stage_directory_name)))
 							break

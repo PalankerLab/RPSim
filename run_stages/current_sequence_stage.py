@@ -1,6 +1,7 @@
 import os
 import csv
 import pickle
+import glob
 from copy import deepcopy
 import matplotlib.pyplot as plt
 from configuration.models import Models
@@ -31,7 +32,7 @@ class CurrentSequenceStage(CommonRunStage):
 		self.is_generated = Configuration().params["generate_pattern"]
 
 		self.multiplexed = 'multiplex' in Configuration().params and Configuration().params['multiplex']
-		
+
 		# define paths
 		if self.is_generated:
 			# If the patterns are generated, the source folder is in the output path
@@ -39,7 +40,7 @@ class CurrentSequenceStage(CommonRunStage):
 		else:
 			# When loading existing patterns, the source folder is in the input path
 			self.image_sequence_input_folder = os.path.join(Configuration().params["user_input_path"], "image_sequence",self.output_directory_name)
-		
+			
 		self.sequence_script_input_file = os.path.join(self.image_sequence_input_folder, "seq_time.csv")
 
 		# initialize gif params
@@ -89,7 +90,7 @@ class CurrentSequenceStage(CommonRunStage):
 			print(len(row_dat))
 			print(row_dat)
 
-		print(np.array(self.video_sequence['duration_subframes_ms']).shape)
+		# print(np.array(self.video_sequence['duration_subframes_ms']).shape)
 
 		self.video_sequence['Frames'] = [deepcopy(self.video_sequence['duration_subframes_ms']) for _ in range(
 			self.number_of_pixels)]
@@ -118,10 +119,16 @@ class CurrentSequenceStage(CommonRunStage):
 				if self.is_generated or self.multiplexed:
 					image = list_subframes[sub_frame_idx]
 				else:
+					# Also check if there is existing multiplex output in the user input path
+					multiplexed = True if len(glob.glob(os.path.join(Configuration().params["user_input_path"], 'image_sequence', Configuration().params["video_sequence_name"], f"{self.video_sequence['frame_names'][frame_idx]}") + "/*multiplexed.bmp")) > 0 else False
+					if multiplexed:
+						subframe_name = f"Subframe{sub_frame_idx + 1}_multiplexed.bmp"
+					else:
+						subframe_name = f'Subframe{sub_frame_idx + 1}.bmp'
 					sub_frame_image_path = os.path.join(Configuration().params["user_input_path"], 'image_sequence',
 														Configuration().params["video_sequence_name"],
 														f"{self.video_sequence['frame_names'][frame_idx]}",
-														f'Subframe{sub_frame_idx + 1}.bmp')
+														subframe_name)
 					image = plt.imread(sub_frame_image_path).astype(float)
 				
 				image = red_corners(image, self.image_label.shape[0])
