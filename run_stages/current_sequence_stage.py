@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from configuration.models import Models
 from configuration.configuration_manager import Configuration
 
-from configuration.stages import RunStages
+from configuration.stages import RunStages, StageManager
 from run_stages.common_run_stage import CommonRunStage
 
 from utilities.image_processing_utilities import *
@@ -31,8 +31,10 @@ class CurrentSequenceStage(CommonRunStage):
 		# Whether to look for generated patterns or pre-existing patterns
 		self.is_generated = Configuration().params["generate_pattern"]
 
-		self.multiplexed = 'multiplex' in Configuration().params and Configuration().params['multiplex']
-
+		# whether use multiplexed output
+		self.use_multiplex = 'use_multiplex' in Configuration().params and Configuration().params['use_multiplex']
+		# whether multiplexing stage is already run
+		self.is_multiplexed = True if 'multiplexing' in Configuration().params and Configuration().params['multiplexing'] else False
 		# define paths
 		if self.is_generated:
 			# If the patterns are generated, the source folder is in the output path
@@ -40,8 +42,17 @@ class CurrentSequenceStage(CommonRunStage):
 		else:
 			# When loading existing patterns, the source folder is in the input path
 			self.image_sequence_input_folder = os.path.join(Configuration().params["user_input_path"], "image_sequence",self.output_directory_name)
-			
-		self.sequence_script_input_file = os.path.join(self.image_sequence_input_folder, "seq_time.csv")
+		
+		if self.use_multiplex:
+			if len(glob.glob(self.image_sequence_input_folder + "/*multiplexed.csv")) > 0:
+				print("Using seq_time_multiplexed.csv")
+				self.sequence_script_input_file = glob.glob(self.image_sequence_input_folder + "/*multiplexed.csv")[0]
+			else:
+				print("Requested multiplex, but no seq_time_multiplexed.csv found, using default.")
+				self.sequence_script_input_file = os.path.join(self.image_sequence_input_folder, "seq_time.csv")
+		else:
+			self.sequence_script_input_file = os.path.join(self.image_sequence_input_folder, "seq_time.csv")
+
 
 		# initialize gif params
 		self.gif_image = []
@@ -60,6 +71,8 @@ class CurrentSequenceStage(CommonRunStage):
 		# Variable used for plotting the most illuminated pixel at the end of the run
 		self.most_illuminated_pixels = dict()
 
+		self.is_bipolar = Configuration().params["model"] == Models.BIPOLAR.value
+
 	@property
 	def stage_name(self):
 		return RunStages.current_sequence.name
@@ -72,7 +85,7 @@ class CurrentSequenceStage(CommonRunStage):
 		:return:
 		"""
 		# TODO: multiplex added here
-		if self.multiplexed:
+		if self.use_multiplex and self.is_multiplexed:
 			list_images = self.outputs_container[RunStages.multiplexing.name][0]
 		elif self.is_generated:
 			#list_images = self.outputs_container["pattern_generation"][0]
@@ -85,43 +98,34 @@ class CurrentSequenceStage(CommonRunStage):
 			self.video_sequence['nb_repetitions_frames'].append(int(row[1]))
 			row_dat = [float(x) for x in row[2:] if x]
 
-			assert abs(sum(row_dat) - self.video_sequence['duration_frames_ms'])<1e-6, "Frames must be of the same length!" # TODO: change rounding error
+			assert abs(round(sum(row_dat) - self.video_sequence['duration_frames_ms'], 6))<1e-6, "Frames must be of the same length!" # TODO: change rounding error
 			self.video_sequence['duration_subframes_ms'].append(row_dat)
-			print(len(row_dat))
-			print(row_dat)
-
-		# print(np.array(self.video_sequence['duration_subframes_ms']).shape)
+			print(f"Length of frame data: {len(row_dat)}")
+			print("Content of frame data: ", row_dat)
 
 		self.video_sequence['Frames'] = [deepcopy(self.video_sequence['duration_subframes_ms']) for _ in range(
 			self.number_of_pixels)]
 		
-
-
-
-		
-		# print(np.array(self.video_sequence['Frames']).shape)
-		# print(len(self.video_sequence['duration_subframes_ms']))
-
-
-
 		# Iterate on the images
 		for frame_idx in range(len(self.script)):
 			number_of_sub_frames = len(self.video_sequence['duration_subframes_ms'][frame_idx])
 			image_stack_temp = []
 
-			# TODO: multiplexed here
-			if self.is_generated or self.multiplexed:
+			# added multiplexed here
+			if self.is_generated or self.is_multiplexed:
 				list_subframes = list_images[frame_idx]
 			
 			# Iterate on the subframes
 			for sub_frame_idx in range(number_of_sub_frames):
 
-				if self.is_generated or self.multiplexed:
+				if self.is_generated or self.is_multiplexed:
 					image = list_subframes[sub_frame_idx]
+					plt.imshow(image)
+					plt.title("Current Sequence Stage Image from Current Run")
 				else:
 					# Also check if there is existing multiplex output in the user input path
-					multiplexed = True if len(glob.glob(os.path.join(Configuration().params["user_input_path"], 'image_sequence', Configuration().params["video_sequence_name"], f"{self.video_sequence['frame_names'][frame_idx]}") + "/*multiplexed.bmp")) > 0 else False
-					if multiplexed:
+					multiplex_found = True if len(glob.glob(os.path.join(Configuration().params["user_input_path"], 'image_sequence', Configuration().params["video_sequence_name"], f"{self.video_sequence['frame_names'][frame_idx]}") + "/*multiplexed.bmp")) > 0 and self.use_multiplex else False
+					if multiplex_found:
 						subframe_name = f"Subframe{sub_frame_idx + 1}_multiplexed.bmp"
 					else:
 						subframe_name = f'Subframe{sub_frame_idx + 1}.bmp'
@@ -130,7 +134,9 @@ class CurrentSequenceStage(CommonRunStage):
 														f"{self.video_sequence['frame_names'][frame_idx]}",
 														subframe_name)
 					image = plt.imread(sub_frame_image_path).astype(float)
-				
+					plt.imshow(image)
+					plt.title("Current Sequence Stage Image from File Loading")
+				plt.show()
 				image = red_corners(image, self.image_label.shape[0])
 				#image = red_corners(image, 2000)
 
@@ -150,10 +156,10 @@ class CurrentSequenceStage(CommonRunStage):
 			self.gif_time += self.video_sequence['duration_subframes_ms'][frame_idx] * number_of_repetitions
 
 		self.gif_time = [x * 10 for x in self.gif_time]
-		if Models.BIPOLAR.value:
-			temp = deepcopy(np.array(self.video_sequence['Frames']))
-			self.video_sequence['Frames'] = np.concatenate([temp, np.array(self.video_sequence['Frames'])], axis=0)
-			print(self.video_sequence['Frames'].shape)
+		# if self.is_bipolar:
+		# 	temp = deepcopy(np.array(self.video_sequence['Frames']))
+		# 	self.video_sequence['Frames'] = np.concatenate([temp, np.array(self.video_sequence['Frames'])], axis=0)
+		# 	print(self.video_sequence['Frames'].shape)
 
 		return [self.video_sequence, {"gif_data": self.gif_image, "gif_time": self.gif_time}, self.determine_most_illuminated(), self.image_sequence_input_folder]
 	
@@ -162,7 +168,7 @@ class CurrentSequenceStage(CommonRunStage):
 		This function reads the sequence definition from the csv spec file, including time information and irradiance.
 		"""
 		# TODO: multiplex changes here
-		if self.multiplexed:
+		if self.is_multiplexed:
 			self.script = self.outputs_container[RunStages.multiplexing.name][1]
 		elif self.is_generated:
 			self.script = self.outputs_container[RunStages.pattern_generation.name][1]

@@ -184,7 +184,7 @@ class MultiplexingStage(CommonRunStage):
                                                         Configuration().params["video_sequence_name"],
                                                         f"{frame_name}",
                                                         f'Subframe{sub_frame_idx + 1}.bmp')
-                    assert os.path.exists(sub_frame_idx), f"Sub frame image not found for frame {frame_name} suframe {sub_frame_idx + 1}"
+                    assert os.path.exists(sub_frame_idx), f"Sub frame image input directory not found for frame {frame_name} suframe {sub_frame_idx + 1}"
                     image = plt.imread(sub_frame_image_path).astype(float)
                     print(f"Read image {sub_frame_image_path}")
 
