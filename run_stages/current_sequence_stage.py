@@ -34,7 +34,7 @@ class CurrentSequenceStage(CommonRunStage):
 		# whether use multiplexed output
 		self.use_multiplex = 'use_multiplex' in Configuration().params and Configuration().params['use_multiplex']
 		# whether multiplexing stage is already run
-		self.is_multiplexed = True if 'multiplexing' in Configuration().params and Configuration().params['multiplexing'] else False
+		self.is_multiplexed = True if 'multiplex' in Configuration().params and Configuration().params['multiplex'] else False
 		# define paths
 		if self.is_generated:
 			# If the patterns are generated, the source folder is in the output path
@@ -85,7 +85,9 @@ class CurrentSequenceStage(CommonRunStage):
 		:return:
 		"""
 		# TODO: multiplex added here
-		if self.use_multiplex and self.is_multiplexed:
+		# print(self.is_multiplexed, self.use_multiplex)
+		if self.is_multiplexed: # multiplex in stage
+			print("Using multiplex list images")
 			list_images = self.outputs_container[RunStages.multiplexing.name][0]
 		elif self.is_generated:
 			#list_images = self.outputs_container["pattern_generation"][0]
@@ -122,8 +124,8 @@ class CurrentSequenceStage(CommonRunStage):
 					image = list_subframes[sub_frame_idx]
 					plt.imshow(image)
 					plt.title("Current Sequence Stage Image from Current Run")
-				else:
-					# Also check if there is existing multiplex output in the user input path
+				else: 
+					# multiplex not in runstage, but use multiplex image from a input directory
 					multiplex_found = True if len(glob.glob(os.path.join(Configuration().params["user_input_path"], 'image_sequence', Configuration().params["video_sequence_name"], f"{self.video_sequence['frame_names'][frame_idx]}") + "/*multiplexed.bmp")) > 0 and self.use_multiplex else False
 					if multiplex_found:
 						subframe_name = f"Subframe{sub_frame_idx + 1}_multiplexed.bmp"
