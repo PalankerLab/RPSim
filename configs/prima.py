@@ -31,7 +31,7 @@ PRIMA["shunt_resistance"]                 = 790150.0     # shunt resistance in O
 PRIMA["initial_Vactive"]                  = 0          # Initial bias of the active electrode in V
 PRIMA["temperature"]                      = 37
 PRIMA["nominal_temperature"]              = 25
-# TODO make sure that the duration is sufficiently long compared to the frequencz, i.e. at least 6 times the period
+PRIMA["simulation_duration_sec"]          = 3 # TODO make sure that the duration is sufficiently long compared to the frequencz, i.e. at least 6 times the period
 PRIMA["simulation_resolution_ms"]         = None          # None defaults to Xyce inner value
 
 # input paths
