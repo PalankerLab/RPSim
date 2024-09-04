@@ -84,8 +84,7 @@ def is_edge(px_pos, px_size, neighbors=6):
 
     return neighbor_num < neighbors
 
-# TODO: n_components into user config
-def Rmat_simp(Rmat, ratio, imag_basis, Gs=0):
+def Rmat_simp(Rmat, ratio, imag_basis, Gs=0, n_components=150):
     N = Rmat.shape[0]
     G_comp = {}
     # Invert the resistance matrix to obtain the conductance matrix
@@ -109,7 +108,7 @@ def Rmat_simp(Rmat, ratio, imag_basis, Gs=0):
     # Sort the eigenvalues by their absolute values
     sorted_indices = np.argsort(np.abs(w))
     # Use the first 50 principal components for general compensation
-    n_principal_components = 150 # The number or desired principal components for general compensation
+    n_principal_components = n_components # The number or desired principal components for general compensation
     num_components = min(n_principal_components, len(w))  # Ensure we don't exceed the number of available components
     error_plot = np.zeros(n_principal_components+1)
     error_plot[0] = np.linalg.norm(E)
@@ -136,4 +135,134 @@ def Rmat_simp(Rmat, ratio, imag_basis, Gs=0):
     # G_comp['v_basis'] = G_comp['v_basis'].reshape((-1, N)).T
     # G_comp['i_basis'] = np.concatenate([V[:, idx].flatten() * w[idx] for idx in included_gen_comp_indices])
     # G_comp['i_basis'] = G_comp['i_basis'].reshape((-1, N)).T
+    return Rmat_sparse, G_comp 
+
+def Rmat_simp_bipolar(Rmat, ratio, imag_basis, Gs=0):
+    #print(Rmat.shape)
+    N_act = int(Rmat.shape[0]/2)
+    N_ret = int(Rmat.shape[0]/2)
+    N = N_act+N_ret
+    G_comp = {}
+    # Invert the resistance matrix to obtain the conductance matrix
+    Gmat = 1 / Rmat
+    # Calculate the Laplacian-like matrix G
+    G = np.diagflat(np.sum(Gmat, axis=0)) - np.tril(Gmat, -1) - np.triu(Gmat, 1)
+    # Sort absolute values of G and determine the threshold for sparsification
+    G_sort = np.sort(np.abs(G), axis=None)
+    threshold = G_sort[-int(N**2 * ratio)]
+    discard_idx = np.array(np.abs(G) < threshold)
+    # Sparsify G and create the sparse resistance matrix
+    S = np.array(G)
+    S[discard_idx] = 0
+    Smat = np.diagflat(np.sum(S, axis=0)) - np.tril(S, -1) - np.triu(S, 1)
+    Smat[discard_idx] = np.nan
+    Rmat_sparse = 1 / Smat
+    # Compute the error matrix E
+    E = G - S
+    # Eigenvalue decomposition of E
+    (w, V) = np.linalg.eigh(E)
+    # Sort the eigenvalues by their absolute values
+    sorted_indices = np.argsort(np.abs(w))
+    # Use the first 50 principal components for general compensation
+    n_principal_components = 1 # The number or desired principal components for general compensation
+    num_components = min(n_principal_components, len(w))  # Ensure we don't exceed the number of available components
+    error_plot = np.zeros(n_principal_components+1)
+    error_plot[0] = np.linalg.norm(E)
+    for i in range(num_components):
+        w_idx = sorted_indices[-(i + 1)]
+        E = E - w[w_idx] * np.outer(V[:, w_idx], V[:, w_idx])
+        error_plot[i+1] = np.linalg.norm(E)
+    G_cmp = E + S
+    # Image specific compensation using expected voltage/current
+    Gp = np.zeros((N_act+1, N_act+1))
+    Gp[:N_act, :N_act] = G[:N_act, :N_act]
+    Gp[:N_act, N_act] = np.sum(G[:N_act, N_act:], axis=1)
+    Gp[N_act, :N_act] = Gp[:N_act, N_act]
+    Gp[N_act, N_act] = np.sum(G[N_act:, N_act:])
+    I_tot = np.sum(imag_basis, axis=0)
+    I_tot = np.reshape(I_tot, (1, -1))
+    imag_basis = np.concatenate((imag_basis, -I_tot), axis=0)
+    zero_idx = np.linalg.norm(imag_basis, axis=0) == 0
+    imag_basis = imag_basis[:, ~zero_idx]
+    # Add in shunt resistance
+    Gp += np.eye(N_act+1)*Gs
+    Gp[N_act, N_act] += (N_act-1)*Gs
+    Gp[:N_act, N_act] -= Gs
+    Gp[N_act, :N_act] -= Gs
+    v_basis = np.linalg.solve(Gp, imag_basis)
+    ep_pad = np.outer( np.ones(N_ret-1), v_basis[-1] )
+    v_basis = np.concatenate((v_basis, ep_pad ), axis=0)
+    (v_basis_om, _) = np.linalg.qr(v_basis)
+    i_basis = (G - G_cmp) @ v_basis_om
+    basis_idx = np.linalg.norm(i_basis, axis=0) > np.abs(w[sorted_indices[-1]]) * 1E-3 # Not used in dynamic return...
+    #plt10.figure()
+    #plt10.plot(error_plot)
+    #plt10.savefig('error_M.png')
+    # Construct compensation bases using principal components and specific comp/
+    included_gen_comp_indices = sorted_indices[-num_components:]
+    G_comp['v_basis'] = np.concatenate([V[:, idx].flatten() for idx in included_gen_comp_indices] + [v_basis_om[:, basis_idx].flatten()])
+    G_comp['v_basis'] = G_comp['v_basis'].reshape((-1, N)).T
+    G_comp['i_basis'] = np.concatenate([V[:, idx].flatten() * w[idx] for idx in included_gen_comp_indices] + [i_basis[:, basis_idx].flatten()])
+    G_comp['i_basis'] = G_comp['i_basis'].reshape((-1, N)).T
+    # included_gen_comp_indices = sorted_indices[-num_components:]
+    # G_comp['v_basis'] = np.concatenate([V[:, idx].flatten() for idx in included_gen_comp_indices])
+    # G_comp['v_basis'] = G_comp['v_basis'].reshape((-1, N)).T
+    # G_comp['i_basis'] = np.concatenate([V[:, idx].flatten() * w[idx] for idx in included_gen_comp_indices])
+    # G_comp['i_basis'] = G_comp['i_basis'].reshape((-1, N)).T
+    #print(G_comp['v_basis'].shape)
+    #print(G_comp['i_basis'].shape)
     return Rmat_sparse, G_comp
+
+# # TODO: n_components into user config
+# def Rmat_simp(Rmat, ratio, imag_basis, Gs=0):
+#     N = Rmat.shape[0]
+#     G_comp = {}
+#     # Invert the resistance matrix to obtain the conductance matrix
+#     Gmat = 1 / Rmat
+#     # Calculate the Laplacian-like matrix G
+#     G = np.diagflat(np.sum(Gmat, axis=0)) - np.tril(Gmat, -1) - np.triu(Gmat, 1)
+#     # Sort absolute values of G and determine the threshold for sparsification
+#     G_sort = np.sort(np.abs(G), axis=None)
+#     threshold = G_sort[-int(N**2 * ratio)]
+#     discard_idx = np.array(np.abs(G) < threshold)
+#     # Sparsify G and create the sparse resistance matrix
+#     S = np.array(G)
+#     S[discard_idx] = 0
+#     Smat = np.diagflat(np.sum(S, axis=0)) - np.tril(S, -1) - np.triu(S, 1)
+#     Smat[discard_idx] = np.nan
+#     Rmat_sparse = 1 / Smat
+#     # Compute the error matrix E
+#     E = G - S
+#     # Eigenvalue decomposition of E
+#     (w, V) = np.linalg.eigh(E)
+#     # Sort the eigenvalues by their absolute values
+#     sorted_indices = np.argsort(np.abs(w))
+#     # Use the first 50 principal components for general compensation
+#     n_principal_components = 150 # The number or desired principal components for general compensation
+#     num_components = min(n_principal_components, len(w))  # Ensure we don't exceed the number of available components
+#     error_plot = np.zeros(n_principal_components+1)
+#     error_plot[0] = np.linalg.norm(E)
+#     for i in range(num_components):
+#         w_idx = sorted_indices[-(i + 1)]
+#         E = E - w[w_idx] * np.outer(V[:, w_idx], V[:, w_idx])
+#         error_plot[i+1] = np.linalg.norm(E)
+#     # Image specific compensation using expected voltage/current
+#     v_basis = np.linalg.solve(G + np.eye(N) * Gs, imag_basis)
+#     (v_basis_om, _) = np.linalg.qr(v_basis)
+#     i_basis = E.dot(v_basis_om)
+#     basis_idx = np.linalg.norm(i_basis, axis=0) > np.abs(w[sorted_indices[-1]]) * 1E-3
+#     #plt10.figure()
+#     #plt10.plot(error_plot)
+#     #plt10.savefig('error_M.png')
+#     # Construct compensation bases using principal components and specific comp/
+#     included_gen_comp_indices = sorted_indices[-num_components:]
+#     G_comp['v_basis'] = np.concatenate([V[:, idx].flatten() for idx in included_gen_comp_indices] + [v_basis_om[:, basis_idx].flatten()])
+#     G_comp['v_basis'] = G_comp['v_basis'].reshape((-1, N)).T
+#     G_comp['i_basis'] = np.concatenate([V[:, idx].flatten() * w[idx] for idx in included_gen_comp_indices] + [i_basis[:, basis_idx].flatten()])
+#     G_comp['i_basis'] = G_comp['i_basis'].reshape((-1, N)).T
+#     # included_gen_comp_indices = sorted_indices[-num_components:]
+#     # G_comp['v_basis'] = np.concatenate([V[:, idx].flatten() for idx in included_gen_comp_indices])
+#     # G_comp['v_basis'] = G_comp['v_basis'].reshape((-1, N)).T
+#     # G_comp['i_basis'] = np.concatenate([V[:, idx].flatten() * w[idx] for idx in included_gen_comp_indices])
+#     # G_comp['i_basis'] = G_comp['i_basis'].reshape((-1, N)).T
+#     return Rmat_sparse, G_comp

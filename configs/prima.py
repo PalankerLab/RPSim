@@ -43,6 +43,7 @@ PRIMA["monopolar"] = \
     {
     "return_to_active_area_ratio": 5.7525,              # ratio between return area and total active area 
     "r_matrix_simp_ratio": 0.1,
+    "n_components": 150,
     "r_matrix_input_file_px_pos": f'r_matrix/COMSOL_results/PS{PRIMA["pixel_size"]}{PRIMA["pixel_size_suffix"]}_pos.csv',
     "r_matrix_input_file_active": f'r_matrix/COMSOL_results/{PRIMA["geometry"]}/{PRIMA["geometry"]}_PS{PRIMA["pixel_size"]}_UCD_active.csv',
     "r_matrix_input_file_EP_return_2D": f'r_matrix/COMSOL_results/{PRIMA["geometry"]}/{PRIMA["geometry"]}_PS{PRIMA["pixel_size"]}_EP_return_2D-whole.csv',
@@ -55,6 +56,7 @@ bipolar_dict = \
     {
     "additional_edges": 142,                                     # bipolar only: edge segments of the return
     "r_matrix_simp_ratio": 0.1,
+    "n_components": 150, # for rmat_simp()
     "r_matrix_input_file_px_pos": f'r_matrix/COMSOL_results/PS{PRIMA["pixel_size"]}{PRIMA["pixel_size_suffix"]}_pos.csv',
     "r_matrix_input_file_active": f'r_matrix/COMSOL_results/{PRIMA["geometry"]}/{PRIMA["geometry"]}_PS{PRIMA["pixel_size"]}_UCD_active.csv',
     "r_matrix_input_file_return": f'r_matrix/COMSOL_results/{PRIMA["geometry"]}/{PRIMA["geometry"]}_PS{PRIMA["pixel_size"]}_UCD_return.csv',

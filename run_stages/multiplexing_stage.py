@@ -52,6 +52,10 @@ class MultiplexingStage(CommonRunStage):
         return RunStages.multiplexing.name
     
     def _show_multiplexed(self, original_img, img_list, frame_name, subframe_idx):
+        '''
+            Plot multiplexed result of original_img
+            img_list: multiplexed images
+        '''
         fig, ax = plt.subplots(nrows=1, ncols=len(img_list)+1, figsize=(15, 8))
         img_list = [original_img] + img_list
         axes = ax.ravel()
@@ -68,26 +72,23 @@ class MultiplexingStage(CommonRunStage):
     
 
     def _check_is_black(self, img):
-        # print(img[:, :, 1].sum())
-        # print(img[:, :, 2].sum())
-        # print(img.shape)
-        # print(img[:, :, :3].sum())
-        # find all png files
+        '''
+            Check whether a frame is black
+        '''
         green_channel = img[:, :, 1].sum().item()
         blue_channel = img[:, :, 2].sum().item()
-        # print((255 * img.shape[0] * img.shape[1]))
-        # print(green_channel, blue_channel)
         is_all_black = green_channel == 0 and blue_channel == 0
         is_all_white = green_channel == (255 * img.shape[0] * img.shape[1]) and blue_channel == (255 * img.shape[0] * img.shape[1])
-        # print(is_all_black, is_all_white)
         return is_all_black or is_all_white
                
     def _multiplex(self, image, as_PIL=False):
-        num_split = Configuration().params['num_split']
+        # default to 4 splits
+        num_split = Configuration().params['num_split'] if 'num_split' in Configuration().params else 4
         h, w, c = image.shape
-        alg = Configuration().params['alg']
+        # default to horizontal splits
+        alg = Configuration().params['alg'] if 'alg' in Configuration().params else 'horizontal'
         result = []
-        if alg == 'vertical':
+        if alg == 'vertical': # compute vertical splits
             width = w // num_split
             for i in range(0, w-width+1, width):
                 start = i
@@ -101,7 +102,7 @@ class MultiplexingStage(CommonRunStage):
                     result.append(img_PIL)
                 else:
                     result.append(np.asarray(img_PIL))
-        elif alg == 'horizontal':
+        elif alg == 'horizontal': # compute horizontal splits
             height = h // num_split
             for i in range(0, h-height+1, height):
                 start = i
@@ -116,7 +117,7 @@ class MultiplexingStage(CommonRunStage):
                 else:
                     result.append(np.asarray(img_PIL))
         else:
-            raise NotImplementedError
+            raise NotImplementedError("Please provide a valid multiplex algorithm")
         
         return result
     
@@ -135,7 +136,7 @@ class MultiplexingStage(CommonRunStage):
             total_frames = 0
             new_row = [frame_name, repetition]
             for idx in info[frame_name]:
-                print(old_row[2+idx])
+                # print(old_row[2+idx])
                 subframe_total_duration = float(old_row[2+idx])
                 # print(info[frame_name][idx])
                 num_multiplexed = info[frame_name][idx] # split into these sub-subframes
@@ -155,9 +156,8 @@ class MultiplexingStage(CommonRunStage):
     def run_stage(self, *args, **kwargs):
 
         if self.is_generated:
-            #list_images = self.outputs_container["pattern_generation"][0]
             list_images = self.outputs_container[RunStages.pattern_generation.name][0]
-        # Iterate on the images
+        # Iterate on the images to find max number of subframes
         # {'frame1': {
             # 'subframe 1': 4, (a non-black frame splitted into 4)
             # 'subframe 2': 1 (a black frame)

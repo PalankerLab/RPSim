@@ -10,6 +10,8 @@ from run_stages.common_run_stage import CommonRunStage
 from utilities.image_processing_utilities import int_sq
 from utilities.common_utilities import load_csv
 
+def nan_helper(y):
+	return np.isnan(y), lambda z: z.nonzero()[0]
 
 class ResistiveMeshStage(CommonRunStage):
 	"""
@@ -28,6 +30,13 @@ class ResistiveMeshStage(CommonRunStage):
 		:return:
 		"""
 		return self._build_interconnected_mesh()
+	
+	def _extract_row_from_z_distance(arr):
+		if len(arr) > 3:
+			# need to extract specific rows
+			pass
+		else:
+			return arr[0, :], arr[2, :], arr[1, :]
 
 	@staticmethod
 	def _build_interconnected_mesh():
@@ -64,31 +73,61 @@ class ResistiveMeshStage(CommonRunStage):
 			px_size = Configuration().params["pixel_size"]
 			N_px = px_pos.shape[0]
 
-			# distance and potential from the center of an active electrode
-			X_act = dat_active[0,:]
-			V_act = dat_active[1,:]
-			# distance and potential from the center of a return hexagon
-			X_ret = dat_return[0,:]
-			V_ret = dat_return[1,:]
-			# determine the self-resistance of the active
-			X_idx = X_act<active_r
-			Rself_act = int_sq(X_act[X_idx], V_act[X_idx])
-			# cross-pixel resistance from the return to the active of the same pixel 
-			Rself_ra = int_sq(X_ret[X_idx], V_ret[X_idx])
-			# self-resistance of an return hexagon
-			Rself_ret = dat_return_neighbor[0]
-			# cross-pixel resistance from the return to the active of the same pixel 
-			return_r = px_size*(.5+np.tan(np.pi/6))/2
-			X_idx = (X_ret<=return_r)&(X_ret>return_r-return_w)
-			Rself_ar = int_sq(X_act[X_idx], V_act[X_idx])
-
-			# interprelate far-field entries
 			x_dist = px_pos[:,0].reshape((N_px, 1)) - px_pos[:,0].reshape((1, N_px))
 			y_dist = px_pos[:,1].reshape((N_px, 1)) - px_pos[:,1].reshape((1, N_px))
 			dist = np.sqrt(x_dist**2 + y_dist**2)
-			R_act =  np.interp(dist, X_act, V_act)
-			R_ret =  np.interp(dist, X_ret, V_ret)
 
+			# TODO: separate pillar vs flat
+			if 'pillar' in Configuration().params['geometry']:
+				# distance and potential from the center of an active electrode
+				X_act = dat_active[0,:]
+				V_act_act = dat_active[2,:]
+				V_act_ret = dat_active[1,:]
+				# distance and potential from the center of a return hexagon
+				X_ret = dat_return[0,:]
+				V_ret_act = dat_return[2,:]
+				V_ret_ret = dat_return[1,:]
+				# determine the self-resistance of the active
+				X_idx = X_act<active_r
+				Rself_act = int_sq(X_act[X_idx], V_act_act[X_idx])
+				# cross-pixel resistance from the return to the active of the same pixel 
+				Rself_ra = int_sq(X_ret[X_idx], V_ret_act[X_idx])
+				# self-resistance of an return hexagon
+				Rself_ret = dat_return_neighbor[0]
+				# cross-pixel resistance from the return to the active of the same pixel 
+				return_r = px_size*(.5+np.tan(np.pi/6))/2
+				X_idx = (X_ret<=return_r)&(X_ret>return_r-return_w)
+				Rself_ar = int_sq(X_act[X_idx], V_act_ret[X_idx])
+
+				# interprelate far-field entries
+				R_act =  np.interp(dist, X_act, V_act_act)
+				# interpolate to fill in nan values from the pillars...
+				nans, indcs = nan_helper(V_ret_ret)
+				V_ret_ret[nans]= np.interp(indcs(nans), indcs(~nans), V_ret_ret[~nans]) 
+				#
+				R_ret =  np.interp(dist, X_ret, V_ret_ret)
+			else: # bipolar human flat
+				# distance and potential from the center of an active electrode
+				X_act = dat_active[0,:]
+				V_act = dat_active[1,:]
+				# distance and potential from the center of a return hexagon
+				X_ret = dat_return[0,:]
+				V_ret = dat_return[1,:]
+				# determine the self-resistance of the active
+				X_idx = X_act<active_r
+				Rself_act = int_sq(X_act[X_idx], V_act[X_idx])
+				# cross-pixel resistance from the return to the active of the same pixel 
+				Rself_ra = int_sq(X_ret[X_idx], V_ret[X_idx])
+				# self-resistance of an return hexagon
+				Rself_ret = dat_return_neighbor[0]
+				# cross-pixel resistance from the return to the active of the same pixel 
+				return_r = px_size*(.5+np.tan(np.pi/6))/2
+				X_idx = (X_ret<=return_r)&(X_ret>return_r-return_w)
+				Rself_ar = int_sq(X_act[X_idx], V_act[X_idx])
+
+				R_act =  np.interp(dist, X_act, V_act)
+				R_ret =  np.interp(dist, X_ret, V_ret)
+				
 			# cross-pixel resistance to a return hexagon from the 3 nearest neighbor returns
 			neighbor1_idx = np.abs(dist - px_size)<1E-3
 			neighbor2_idx = np.abs(dist - 2*px_size)<1E-3
@@ -96,7 +135,6 @@ class ResistiveMeshStage(CommonRunStage):
 			R_ret[neighbor1_idx] = dat_return_neighbor[1]
 			R_ret[neighbor2_idx] = dat_return_neighbor[2]
 			R_ret[neighbor3_idx] = dat_return_neighbor[3]
-
 			# cross-pixel resistance between active and return
 			R12 = copy.deepcopy(R_act)
 			R21 = copy.deepcopy(R_ret)

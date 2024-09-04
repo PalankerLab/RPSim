@@ -20,7 +20,7 @@ from circuit_building_blocks.electrode import SIROF
 from circuit_building_blocks.frame_driver import FramesDriver
 from circuit_building_blocks.image_driver import ImageDriver
 
-from utilities.image_processing_utilities import is_edge, Rmat_simp
+from utilities.image_processing_utilities import is_edge, Rmat_simp, Rmat_simp_bipolar
 
 
 class CircuitStage(CommonRunStage):
@@ -38,6 +38,7 @@ class CircuitStage(CommonRunStage):
 		self.video_sequence = self.outputs_container[RunStages.current_sequence.name][0]
 		self.resistive_mesh = self.outputs_container[RunStages.resistive_mesh.name][0]
 		self.number_of_pixels = Configuration().params["number_of_pixels"]
+		self.n_components = Configuration().params["n_components"] if 'n_components' in Configuration().params else 150
 
 		# get current model
 		self.is_bipolar = Configuration().params["model"] == Models.BIPOLAR.value
@@ -60,20 +61,37 @@ class CircuitStage(CommonRunStage):
 		self.G_comp_flag = False
 		Gs_new = 1 / Configuration().params['shunt_resistance'] if Configuration().params['shunt_resistance'] else 0
 		if Configuration().params['r_matrix_simp_ratio'] < 1:
-			if Configuration().params["model"]== Models.BIPOLAR.value:
-				print(self.number_of_pixels)
-				print(np.array(self.video_sequence["Frames"]).shape)
-				print(self.video_sequence['Frames'][0])
-				imag_basis = np.array(self.video_sequence["Frames"]).reshape((self.number_of_pixels*2, -1))
-			if Configuration().params["model"] == Models.MONOPOLAR.value:
-				imag_basis = np.array(self.video_sequence["Frames"]).reshape((self.number_of_pixels, -1))
+			imag_basis = np.array(self.video_sequence["Frames"]).reshape((self.number_of_pixels, -1))
 			col_norm = np.linalg.norm(imag_basis, axis=0)
 			imag_basis = imag_basis[:, col_norm > 1E-6]
-			(self.resistive_mesh, self.G_comp) = Rmat_simp(Rmat=self.resistive_mesh,
-														   Gs=Gs_new,
-														   ratio=Configuration().params['r_matrix_simp_ratio'],
-														   imag_basis=imag_basis)
+			if Configuration().params["model"] == Models.MONOPOLAR.value:
+				(self.resistive_mesh, self.G_comp) = Rmat_simp(Rmat=self.resistive_mesh,
+															Gs=Gs_new,
+															ratio=Configuration().params['r_matrix_simp_ratio'],
+															imag_basis=imag_basis,
+															n_components=self.n_components)
+			if Configuration().params["model"] == Models.BIPOLAR.value:
+				(self.resistive_mesh, self.G_comp) = Rmat_simp_bipolar(Rmat=self.resistive_mesh,
+															Gs=Gs_new,
+															ratio=Configuration().params['r_matrix_simp_ratio'],
+															imag_basis=imag_basis)
 			self.G_comp_flag = True
+		# if Configuration().params['r_matrix_simp_ratio'] < 1:
+		# 	if Configuration().params["model"]== Models.BIPOLAR.value:
+		# 		print(self.number_of_pixels)
+		# 		print(np.array(self.video_sequence["Frames"]).shape)
+		# 		print(self.video_sequence['Frames'][0])
+		# 		imag_basis = np.array(self.video_sequence["Frames"]).reshape((self.number_of_pixels*2, -1))
+		# 	if Configuration().params["model"] == Models.MONOPOLAR.value:
+		# 		imag_basis = np.array(self.video_sequence["Frames"]).reshape((self.number_of_pixels, -1))
+		# 	col_norm = np.linalg.norm(imag_basis, axis=0)
+		# 	imag_basis = imag_basis[:, col_norm > 1E-6]
+		# 	(self.resistive_mesh, self.G_comp) = Rmat_simp(Rmat=self.resistive_mesh,
+		# 												   Gs=Gs_new,
+		# 												   ratio=Configuration().params['r_matrix_simp_ratio'],
+		# 												   imag_basis=imag_basis,
+		# 												   n_components=self.n_components)
+		# 	self.G_comp_flag = True
 
 		# get edges
 		if Configuration().params.get("r_matrix_input_file_px_pos") and self.is_bipolar:
