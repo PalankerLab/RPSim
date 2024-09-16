@@ -77,7 +77,6 @@ class ResistiveMeshStage(CommonRunStage):
 			y_dist = px_pos[:,1].reshape((N_px, 1)) - px_pos[:,1].reshape((1, N_px))
 			dist = np.sqrt(x_dist**2 + y_dist**2)
 
-			# TODO: separate pillar vs flat
 			if 'pillar' in Configuration().params['geometry']:
 				# distance and potential from the center of an active electrode
 				X_act = dat_active[0,:]

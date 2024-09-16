@@ -82,10 +82,16 @@ class MultiplexingStage(CommonRunStage):
         return is_all_black or is_all_white
                
     def _multiplex(self, image, as_PIL=False):
+        '''
+            The function that does the actual multiplexing
+            image: the source image
+            as_PIL: if False, return np.array, if True, return PIL.Image
+            return: a list of multiplexed images
+        '''
         # default to 4 splits
         num_split = Configuration().params['num_split'] if 'num_split' in Configuration().params else 4
         h, w, c = image.shape
-        # default to horizontal splits
+        # default to horizontal splits, TODO: replace with a better algorithm here
         alg = Configuration().params['alg'] if 'alg' in Configuration().params else 'horizontal'
         result = []
         if alg == 'vertical': # compute vertical splits
@@ -136,9 +142,7 @@ class MultiplexingStage(CommonRunStage):
             total_frames = 0
             new_row = [frame_name, repetition]
             for idx in info[frame_name]:
-                # print(old_row[2+idx])
                 subframe_total_duration = float(old_row[2+idx])
-                # print(info[frame_name][idx])
                 num_multiplexed = info[frame_name][idx] # split into these sub-subframes
                 total_frames += num_multiplexed
                 if num_multiplexed > 1: # a result of multiplexing, non-black image
@@ -150,24 +154,22 @@ class MultiplexingStage(CommonRunStage):
             max_frames = max(max_frames, total_frames)
 
         modified_script[3] = [None,'Frame Repetition'] + [f'Subframe{i}' for i in range(1, max_frames+1)]
-        # print(modified_script[3])
         return modified_script
 
     def run_stage(self, *args, **kwargs):
 
         if self.is_generated:
             list_images = self.outputs_container[RunStages.pattern_generation.name][0]
-        # Iterate on the images to find max number of subframes
+        # Iterate on the images to find max number of subframes and collect information in form below:
         # {'frame1': {
             # 'subframe 1': 4, (a non-black frame splitted into 4)
             # 'subframe 2': 1 (a black frame)
         # }}
         frame_info = {} 
         for frame_idx in range(len(self.script) - 4):
-            number_of_sub_frames = len(self.script[4 + frame_idx]) - 2 # first_grating_120um_64Hz_3mW_on_for_3.90625ms,32,3.90625,3.90625,3.90625,3.90625
+            number_of_sub_frames = len(self.script[4 + frame_idx]) - 2 
             if self.is_generated:
                 list_subframes = list_images[frame_idx]
-                # print(len(list_subframes))
         
             frame_name = self.script[4 + frame_idx][0]
             frame_info[frame_name] = {}
@@ -186,18 +188,16 @@ class MultiplexingStage(CommonRunStage):
                                                         f'Subframe{sub_frame_idx + 1}.bmp')
                     assert os.path.exists(sub_frame_idx), f"Sub frame image input directory not found for frame {frame_name} suframe {sub_frame_idx + 1}"
                     image = plt.imread(sub_frame_image_path).astype(float)
-                    print(f"Read image {sub_frame_image_path}")
 
                 # if black frame, no multiplex 
                 if self._check_is_black(image):
-                    print("Is black frame")
                     frame_info[frame_name][sub_frame_idx] = 1
                     # Save subframe
                     list_tmp_bmp.append((f'Subframe{img_idx+1}_multiplexed', Image.fromarray(image.astype(np.uint8))))
                     list_tmp_array.append(image)
                     img_idx += 1
                     continue
-                # print(Configuration().params)
+
                 multiplexed_imgs_arr = self._multiplex(image, as_PIL=False) # np format
                 multiplexed_imgs_PIL = [Image.fromarray(x) for x in multiplexed_imgs_arr] # PIL Image format
 
@@ -217,7 +217,6 @@ class MultiplexingStage(CommonRunStage):
             self.list_subframes_as_ndarray_after_multiplexing.append(list_tmp_array)
 
         modified_script = self._modify_script(frame_info)
-        # print(modified_script)
 
         return [self.list_subframes_as_ndarray_after_multiplexing, modified_script, self.dict_PIL_images_after_multiplexing] 
             

@@ -76,23 +76,6 @@ class CircuitStage(CommonRunStage):
 															ratio=Configuration().params['r_matrix_simp_ratio'],
 															imag_basis=imag_basis)
 			self.G_comp_flag = True
-		# if Configuration().params['r_matrix_simp_ratio'] < 1:
-		# 	if Configuration().params["model"]== Models.BIPOLAR.value:
-		# 		print(self.number_of_pixels)
-		# 		print(np.array(self.video_sequence["Frames"]).shape)
-		# 		print(self.video_sequence['Frames'][0])
-		# 		imag_basis = np.array(self.video_sequence["Frames"]).reshape((self.number_of_pixels*2, -1))
-		# 	if Configuration().params["model"] == Models.MONOPOLAR.value:
-		# 		imag_basis = np.array(self.video_sequence["Frames"]).reshape((self.number_of_pixels, -1))
-		# 	col_norm = np.linalg.norm(imag_basis, axis=0)
-		# 	imag_basis = imag_basis[:, col_norm > 1E-6]
-		# 	(self.resistive_mesh, self.G_comp) = Rmat_simp(Rmat=self.resistive_mesh,
-		# 												   Gs=Gs_new,
-		# 												   ratio=Configuration().params['r_matrix_simp_ratio'],
-		# 												   imag_basis=imag_basis,
-		# 												   n_components=self.n_components)
-		# 	self.G_comp_flag = True
-
 		# get edges
 		if Configuration().params.get("r_matrix_input_file_px_pos") and self.is_bipolar:
 			self.is_edge = is_edge(np.loadtxt(Configuration().params["r_matrix_input_file_px_pos"], delimiter=','),
@@ -235,21 +218,7 @@ class CircuitStage(CommonRunStage):
 					self.circuit.R(f'r{cross_idx}_{px_idx}', f'rSaline{cross_idx}', f'rSaline{px_idx}',
 								   "{:.3e}".format(R))
 
-		# Conductance matrix compensation after thresholding:
-		# if self.G_comp_flag:
-		# 	for comp_idx in range(self.G_comp['v_basis'].shape[1]):
-		# 		self.circuit.R(f'comp{comp_idx}', f'comp{comp_idx}', self.circuit.gnd, 1)
-		# 		for px_idx in range(1, self.number_of_pixels + 1):
-		# 			self.circuit.VCCS(f'px{px_idx}_comp{comp_idx}', self.circuit.gnd, f'comp{comp_idx}',
-		# 							  f'Saline{px_idx}', f'Saline{0}',
-		# 							  "{:.3e}".format(self.G_comp['v_basis'][px_idx - 1, comp_idx]))
-		# 			self.circuit.VCCS(f'comp{comp_idx}_px{px_idx}', f'Saline{px_idx}', f'Saline{0}',
-		# 							  f'comp{comp_idx}', self.circuit.gnd,
-		# 							  "{:.3e}".format(self.G_comp['i_basis'][px_idx - 1, comp_idx]))
-
-		# return self.circuit
 		if self.G_comp_flag:
-			print(self.number_of_pixels)
 			for comp_idx in range(self.G_comp['v_basis'].shape[1]):
 				self.circuit.R(f'comp{comp_idx}', f'comp{comp_idx}', self.circuit.gnd, 1)
 				for px_idx in range(1, self.number_of_pixels + 1):

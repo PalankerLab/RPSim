@@ -84,13 +84,11 @@ class CurrentSequenceStage(CommonRunStage):
 		:param kwargs:
 		:return:
 		"""
-		# TODO: multiplex added here
-		# print(self.is_multiplexed, self.use_multiplex)
+		# Need to consider if images are multiplex ed
 		if self.is_multiplexed: # multiplex in stage
 			print("Using multiplex list images")
 			list_images = self.outputs_container[RunStages.multiplexing.name][0]
 		elif self.is_generated:
-			#list_images = self.outputs_container["pattern_generation"][0]
 			list_images = self.outputs_container[RunStages.pattern_generation.name][0]
 		self._parse_script_file()
 
@@ -100,10 +98,9 @@ class CurrentSequenceStage(CommonRunStage):
 			self.video_sequence['nb_repetitions_frames'].append(int(row[1]))
 			row_dat = [float(x) for x in row[2:] if x]
 
+			# Added rounding
 			assert abs(round(sum(row_dat) - self.video_sequence['duration_frames_ms'], 6))<1e-6, "Frames must be of the same length!" # TODO: change rounding error
 			self.video_sequence['duration_subframes_ms'].append(row_dat)
-			print(f"Length of frame data: {len(row_dat)}")
-			print("Content of frame data: ", row_dat)
 
 		self.video_sequence['Frames'] = [deepcopy(self.video_sequence['duration_subframes_ms']) for _ in range(
 			self.number_of_pixels)]
@@ -119,7 +116,6 @@ class CurrentSequenceStage(CommonRunStage):
 			
 			# Iterate on the subframes
 			for sub_frame_idx in range(number_of_sub_frames):
-
 				if self.is_generated or self.is_multiplexed:
 					image = list_subframes[sub_frame_idx]
 					plt.imshow(image)
@@ -152,16 +148,11 @@ class CurrentSequenceStage(CommonRunStage):
 				image_stack_temp.append(im.fromarray(np.uint8(image.round())))
 
 
-
 			number_of_repetitions = self.video_sequence['nb_repetitions_frames'][frame_idx]
 			self.gif_image += image_stack_temp * number_of_repetitions
 			self.gif_time += self.video_sequence['duration_subframes_ms'][frame_idx] * number_of_repetitions
 
 		self.gif_time = [x * 10 for x in self.gif_time]
-		# if self.is_bipolar:
-		# 	temp = deepcopy(np.array(self.video_sequence['Frames']))
-		# 	self.video_sequence['Frames'] = np.concatenate([temp, np.array(self.video_sequence['Frames'])], axis=0)
-		# 	print(self.video_sequence['Frames'].shape)
 
 		return [self.video_sequence, {"gif_data": self.gif_image, "gif_time": self.gif_time}, self.determine_most_illuminated(), self.image_sequence_input_folder]
 	
@@ -169,7 +160,7 @@ class CurrentSequenceStage(CommonRunStage):
 		"""
 		This function reads the sequence definition from the csv spec file, including time information and irradiance.
 		"""
-		# TODO: multiplex changes here
+		# Consider if there is multiplex stage
 		if self.is_multiplexed:
 			self.script = self.outputs_container[RunStages.multiplexing.name][1]
 		elif self.is_generated:
