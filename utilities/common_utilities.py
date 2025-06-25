@@ -58,16 +58,20 @@ class CommonUtils:
         logger.addHandler(file_handler)
 
     @staticmethod
-    def generate_output_directory(parent_directory):
+    def generate_output_directory(parent_directory, add_time=True):
         """
         This function creates a new output directory in the given parent directory and with the given prefix name
         :param parent_directory: the path of the parent directory in which the new folder should be created
         :return:
         """
-        # generate unique directory name using date and time
-        current_date_and_time = datetime.now()
-        output_directory = os.path.join(parent_directory, current_date_and_time.strftime("%H_%M_%S-%Y_%m_%d").split(
-            '.')[0])
+
+        if add_time:
+            # generate unique directory name using date and time
+            current_date_and_time = datetime.now()
+            output_directory = os.path.join(parent_directory, current_date_and_time.strftime("%H_%M_%S-%Y_%m_%d").split(
+                '.')[0])
+        else:
+            output_directory = parent_directory
 
         # create directory and parents, if they do not exist
         Path(output_directory).mkdir(parents=True, exist_ok=True)

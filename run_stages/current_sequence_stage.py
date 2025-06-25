@@ -134,7 +134,7 @@ class CurrentSequenceStage(CommonRunStage):
 					image = plt.imread(sub_frame_image_path).astype(float)
 					plt.imshow(image)
 					plt.title("Current Sequence Stage Image from File Loading")
-				plt.show()
+				plt.show(block=False)
 				image = red_corners(image, self.image_label.shape[0])
 				#image = red_corners(image, 2000)
 

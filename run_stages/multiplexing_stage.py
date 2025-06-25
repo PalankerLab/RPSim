@@ -68,7 +68,7 @@ class MultiplexingStage(CommonRunStage):
             axes[i].set_title(title)
         fig.suptitle(f"{frame_name} Subframe {subframe_idx + 1} Multiplexed Results", y=0.7)
         plt.tight_layout()
-        plt.show()
+        plt.show(block=False)
     
 
     def _check_is_black(self, img):

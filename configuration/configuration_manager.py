@@ -89,7 +89,7 @@ class Configuration(metaclass=Singleton):
 			self.params = self.configurations.pop()
 
 			# set input and output paths for the user files
-			if not self.params["user_files_path"]:
+			if "user_files_path" not in self.params.keys() or self.params["user_files_path"] is None:
 				self.params["user_files_path"] = Configuration.default_path_prefix
 			self.params["user_input_path"] = os.path.join(self.params["user_files_path"], 'user_input')
 			self.params["user_output_path"] = os.path.join(self.params["user_files_path"], 'user_output')

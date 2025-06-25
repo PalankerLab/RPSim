@@ -177,7 +177,18 @@ class PostProcessStage(CommonRunStage):
 		self.depth_indices (list(int)): contains the indices of the requested depth values in COMSOL files
 		"""
 		# define depth resolution for human or rat, default is 1 µm resolution from 1 to 160 or 126
-		default_depth_range = 160 if "human" in Configuration().params["geometry"].lower() else 126
+		if "human" in Configuration().params["geometry"].lower():
+			default_depth_range = 160
+		elif "rat_rcs" in Configuration().params["geometry"].lower():
+			default_depth_range = 126
+		elif "rat_dg_le" in Configuration().params["geometry"].lower():
+			default_depth_range = 100
+		elif "pdish" in Configuration().params["geometry"].lower():
+			default_depth_range = 200
+		else:
+			warnings.warn(f"Unknown geometry {Configuration().params['geometry']}. Assuming human geometry.")
+			default_depth_range = 160
+
 		default_depth_params_um =  [x*1 for x in range(default_depth_range)]
 		self.depth_values_in_um = Configuration().params["depth_values_in_um"] if Configuration().params.get("depth_values_in_um") else default_depth_params_um	
 		

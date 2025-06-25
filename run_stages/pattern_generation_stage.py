@@ -1,17 +1,16 @@
-import pickle
-import matplotlib.pyplot as plt
-import numpy as np
+import math
 import os
+import pickle
 import warnings
+import numpy as np
 from copy import deepcopy
-
-from PIL import Image, ImageDraw, ImageFont
-
+import matplotlib.pyplot as plt
+from PIL import Image, ImageDraw, ImageFont, ImageColor
 
 from configuration.stages import RunStages
+from run_stages.common_run_stage import CommonRunStage
 from configuration.configuration_manager import Configuration
 
-from run_stages.common_run_stage import CommonRunStage
 
 class PatternGenerationStage(CommonRunStage):
     """
@@ -128,7 +127,7 @@ class ImagePattern():
         self.background_overlay = self.implant_layout.copy() 
         self.background_overlay.putalpha(255) # Remove transparency to fully opaque
         self.projected = Image.new("RGB", self.background_overlay.size, "black")
-        
+
         self.opacity = 180 # (0, 255) (transparent to opaque)
         self.image_pixel_scale = self.find_image_scale()
         self.scaled_pixel = int(self.pixel_size * self.image_pixel_scale)
@@ -148,7 +147,7 @@ class ImagePattern():
         axes[0].imshow(np.array(self.background_overlay))
         axes[1].imshow(np.array(self.projected))
         fig.suptitle(f"{frame_name} Subframe {subframe_idx + 1}", y=0.62)
-        plt.show()
+        plt.show(block=False)
 
     def save_as_PIL(self):
         """
@@ -334,7 +333,7 @@ class ImagePattern():
         # TODO check whether we can improve this criterion
         return central_labels[0]
     
-    def find_center(self, pixel_label = None):
+    def find_center(self, pixel_label=None):
         """
         Finds the center of a given electrod within the pixel_label coordinate.
             
@@ -432,7 +431,7 @@ class ImagePattern():
         text_drawing = ImageDraw.Draw(text_image)
         # Find the font size matching the letter size
         font = self.determine_font_size(letter_size)
-        text_drawing.text((0, 0), pattern.text, font=font, fill="white", align='center', spacing=0) # TODO check for the desired vertical spacing, if non-zero, increase image_size height by spacing, eventually use ImageDraw.textbox()
+        text_drawing.text((0, 0), pattern.text, font=font, fill=pattern.fill_color, align='center', spacing=0) # TODO check for the desired vertical spacing, if non-zero, increase image_size height by spacing, eventually use ImageDraw.textbox()
         
         # Rotate with expansion of the image (i.e. no crop)
         text_image = text_image.rotate(pattern.rotation, expand = 1)
@@ -488,13 +487,13 @@ class ImagePattern():
             points.append(self.rotate_point(x_pos + width_grating, y_h, theta))  # Bottom right
             points.append(self.rotate_point(x_pos, y_h, theta))  # Bottom left
             # Draw rotated rectangle
-            drawing_grating.polygon(points, fill="white", outline=None)
+            drawing_grating.polygon(points, fill=pattern.fill_color, outline=None)
         
         actual_position = (0, 0)
 
         return self.assemble_drawing(actual_position, grating_only)
     
-    def draw_rectangle(self, pattern, fill_color = "white"):
+    def draw_rectangle(self, pattern):
         """
         Draws a rectangle with the given size, at given position and rotation
             Parameters:
@@ -518,10 +517,10 @@ class ImagePattern():
         
         rectangle = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(rectangle)
-        draw.rectangle([0, 0, width, height], fill=fill_color)
+        draw.rectangle([0, 0, width, height], fill=pattern.fill_color)
 
         # Rotate with expansion of the image (i.e. no crop)
-        rectangle = rectangle.rotate(pattern.rotation, expand = 1)
+        rectangle = rectangle.rotate(pattern.rotation, expand=1)
 
         # Update the size due after rotation due to the expansion
         width = rectangle.size[0]
@@ -544,10 +543,52 @@ class ImagePattern():
         
         circle = Image.new("RGBA", (diameter, diameter), (0, 0, 0, 0))
         draw = ImageDraw.Draw(circle)
-        draw.ellipse([0, 0, diameter-1, diameter-1], fill="white")
+        draw.ellipse([0, 0, diameter-1, diameter-1], fill=pattern.fill_color)
         actual_position = self.convert_user_position_to_image_position(pattern.position, pattern.unit, diameter, diameter)
         self.assemble_drawing(actual_position, circle)
-    
+
+    def draw_gaussian_circle(self, pattern):
+        """
+        Draws a circle with a Gaussian decay in alpha from the center.
+
+        Parameters:
+            pattern (ImagePattern.Circle): Circle to draw
+            sigma_ratio (float): Ratio of the radius used as sigma for Gaussian falloff (default is 1/3)
+            max_alpha (int): Maximum alpha value at the center (default is 255)
+
+        Returns:
+            actual_position (int, int): The position to use when pasting the image
+            circle (PIL.Image): The image of the circle with alpha transparency and Gaussian decay
+        """
+        # convert distances to image-based pixels
+        diameter = int(pattern.diameter * (self.scaled_pixel if pattern.unit == "pixel" else self.image_pixel_scale))
+        radius = diameter / 2
+
+        # create a blank RGBA image
+        circle = Image.new("RGBA", (diameter, diameter), (0, 0, 0, 0))
+        pixels = circle.load()
+
+        # get center and color
+        center = (radius, radius)
+        r, g, b = ImageColor.getrgb(pattern.fill_color)
+        max_alpha = max(r, g, b)
+
+        # define falloff
+        sigma = radius * pattern.sigma_ratio
+
+        # color pixels based on their distance from the center
+        for y in range(diameter):
+            for x in range(diameter):
+                dx = x - center[0]
+                dy = y - center[1]
+                distance_sq = dx ** 2 + dy ** 2
+                gaussian_alpha = int(max_alpha * math.exp(-distance_sq / (2 * sigma ** 2)))
+                if gaussian_alpha > 0:
+                    pixels[x, y] = (r, g, b, gaussian_alpha)
+
+        actual_position = self.convert_user_position_to_image_position(pattern.position, pattern.unit, diameter, diameter)
+        self.assemble_drawing(actual_position, circle)
+
     def generate_overlayed_pattern(self, pil_img):
         """
         Generate a semi transparent image of the pattern for the overlayed image containing the pixel layout.
@@ -606,9 +647,10 @@ class Pattern():
         rotation (float): The clockwise rotation of the pattern in degrees
         unit (float): Either 'pixel' or 'um'. Pixel for features which are multiples of the pixel size, or um for micrometers.      
     """
-    def __init__(self, postion = (0, 0), rotation = 0, unit = "pixel"):
+    def __init__(self, postion=(0, 0), rotation=0, unit="pixel", fill_color=(255, 255, 255)):
         self.position = postion
         self.rotation = rotation
+        self.fill_color = fill_color
         
         if not isinstance(unit, str):
             raise ValueError(f"The unit should be of a type str, and equal to 'um' or 'pixel', not '{unit}'.")
@@ -646,8 +688,8 @@ class Text(Pattern):
             -> the letter size should be 5 times the gap size
             -> the computation are done in image pixel through self.scaled_pixel or self.image_pixel_scale
     """    
-    def __init__(self, position = (0, 0), rotation = 0, text = "C", unit = "pixel", letter_size = 5, gap_size = None):
-        super().__init__(position, rotation, unit)
+    def __init__(self, position=(0, 0), rotation=0, text="C", unit="pixel", letter_size=5, gap_size=None, fill_color=(255, 255, 255)):
+        super().__init__(position, rotation, unit, fill_color=fill_color)
         self.letter_size = letter_size
         self.text = text
         
@@ -672,8 +714,8 @@ class Grating(Pattern):
         width_grating (int): The width of grating in micron
         pitch_grating (int): The shortest distance separating each grating (edge to edge) in micron
     """ 
-    def __init__(self, position = (0, 0), rotation = 45, unit = "pixel", width_grating = 1, pitch_grating = 1):
-        super().__init__(position, rotation, unit)
+    def __init__(self, position = (0, 0), rotation = 45, unit="pixel", width_grating=1, pitch_grating=1, fill_color=(255, 255, 255)):
+        super().__init__(position, rotation, unit, fill_color=fill_color)
 
         if (np.abs(rotation) > 90):
             raise ValueError("The rotation angle shoud be between -90° <= rotation <= 90°")
@@ -700,8 +742,8 @@ class Rectangle(Pattern):
         width (float): The rectangle's width in micron
         height (float): The rectangle's height in micron
     """    
-    def __init__(self, position = (0, 5), rotation = 45, unit = "pixel", width  =  100, height = 100):
-        super().__init__(position, rotation, unit)
+    def __init__(self, position=(0, 5), rotation=0, unit="pixel", width=100, height=100, fill_color=(255, 255, 255)):
+        super().__init__(position, rotation, unit, fill_color=fill_color)
         self.width = width
         self.height = height 
     
@@ -720,8 +762,8 @@ class Circle(Pattern):
         position (float, float): The position of the circle with respect to the central pixel
         diameter (float): The circle diameter in micron
     """  
-    def __init__(self, position = (0, 0), unit="pixel", diameter = 200):
-        super().__init__(position, rotation = 0, unit=unit)
+    def __init__(self, position=(0, 0), unit="pixel", diameter=200, fill_color=(255, 255, 255)):
+        super().__init__(position, rotation=0, unit=unit, fill_color=fill_color)
         self.diameter = diameter
 
     def __str__(self):
@@ -729,6 +771,27 @@ class Circle(Pattern):
     
     def draw(self, drawing_board):
         drawing_board.draw_circle(self)
+
+
+class GaussianCircle(Pattern):
+    """
+    Class defining the parameters for drawing a circle.
+    Note that the rotation is not used for circles.
+    Attributes:
+        position (float, float): The position of the circle with respect to the central pixel
+        diameter (float): The circle diameter in micron
+        sigma_ratio (float): The ratio of the diameter used as sigma for Gaussian falloff (default is 1/3)
+    """
+    def __init__(self, position=(0, 0), unit="pixel", diameter=200, fill_color=(255, 255, 255), sigma_ratio=1/3):
+        super().__init__(position, rotation=0, unit=unit, fill_color=fill_color)
+        self.diameter = diameter
+        self.sigma_ratio = sigma_ratio
+
+    def __str__(self):
+        return f"User position: {self.position}\nRotation: {self.rotation}\nDiameter {self.diameter}"
+
+    def draw(self, drawing_board):
+        drawing_board.draw_gaussian_circle(self)
 
 
 class FullField(Pattern):
@@ -741,15 +804,14 @@ class FullField(Pattern):
     Attributes:  
         fill_color (string): Either black for no activation, or white for full field activation        
     """  
-    def __init__(self, fill_color = "black"):
-        super().__init__()
-        self.color = fill_color
+    def __init__(self, fill_color=(0, 0, 0)):
+        super().__init__(fill_color=fill_color)
 
     def __str__(self):
         return f"Full field coverage"
     
     def draw(self, drawing_board):
-        drawing_board.draw_rectangle(Rectangle(height=None, width=None, rotation=0, position=(0,0)), fill_color = self.color)
+        drawing_board.draw_rectangle(Rectangle(height=None, width=None, rotation=0, position=(0, 0), fill_color=self.fill_color))
 
 
 ################## Classes for organizing the creation of GIF/video sequences ##################
