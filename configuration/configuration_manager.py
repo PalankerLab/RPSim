@@ -257,6 +257,34 @@ class Configuration(metaclass=Singleton):
 		else:
 			self.params['cpu_to_use'] = 1
 
+	def _should_be_uniformized(self, object):
+		"""
+		Used for comparing configurations when skipping stages.
+		This function checks whether the object is path, if yes
+		it has to be uniformized for comparison.
+		"""
+		if isinstance(object, str):
+			if '/' in object or '\\' in object:
+				return True
+		return False
+
+	def _uniformize_path(self, path):
+		"""
+		Used when stages are skipped and configurations are compared.
+		It allows to skip stages from a previous run on a different computer (i.e. different root folder).
+		"""
+
+		# Remove the root folders and only keep what comes starting from the base
+		path_from_base = path[path.rfind(self.base):]
+
+		# Separate the path based on the Windows separator
+		windows_sep = path_from_base.split('\\')
+		final_sep = []
+		# Separate the the remaining path based on the Unix separator
+		[final_sep.extend(text.split('/')) for text in windows_sep]
+		# Return a uniformized path based on the current OS
+		return os.path.join(*final_sep)
+
 	def get_configuration_as_table(self):
 		"""
 		This function outputs the configuration in a table form to a logger or a file
@@ -364,31 +392,12 @@ class Configuration(metaclass=Singleton):
 		if directories[directory_x] > directories[directory_y]:
 			return 1
 		return -1
-	
-	def _should_be_uniformized(self, object):
+
+	def add_parameter(self, key, value):
 		"""
-		Used for comparing configurations when skipping stages. 
-		This function checks whether the object is path, if yes
-		it has to be uniformized for comparison. 
+		This function adds a new parameter to the configuration
+		:param key: the key of the parameter to add
+		:param value: the value of the parameter to add
+		:return:
 		"""
-		if isinstance(object, str):
-			if '/' in object or '\\' in object:
-				return True
-		return False
-	
-	def _uniformize_path(self, path):
-		"""
-		Used when stages are skipped and configurations are compared.
-		It allows to skip stages from a previous run on a different computer (i.e. different root folder).
-		"""
-		
-		# Remove the root folders and only keep what comes starting from the base
-		path_from_base = path[path.rfind(self.base):]
-		
-		# Separate the path based on the Windows separator
-		windows_sep = path_from_base.split('\\')
-		final_sep = []
-		# Separate the the remaining path based on the Unix separator
-		[final_sep.extend(text.split('/')) for text in windows_sep]
-		# Return a uniformized path based on the current OS
-		return os.path.join(*final_sep)
+		self.params[key] = value

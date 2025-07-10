@@ -64,8 +64,9 @@ def run_rpsim(configuration=None, run_stages=None, skip_stages=None, output_dire
             run_stages = run_manager.get_requested_run_stages()
             RPSIM_LOGGER.info("Requested run stages: {}".format(list(run_stages)))
 
-            # print current configuration to file
-            # RPSIM_LOGGER.info("Running the following configuration\n{}\n".format(configuration_manager.get_configuration_as_table()))
+            # add list of run stages to the configuration
+            configuration_manager.add_parameter('run_stages', list(run_stages))
+
             # print current configuration to file
             config_table, calculated_table = configuration_manager.get_configuration_as_table()
             RPSIM_LOGGER.info("Running the following configuration\n====>User Inputs\n{}\n".format(config_table))
@@ -92,10 +93,13 @@ def run_rpsim(configuration=None, run_stages=None, skip_stages=None, output_dire
 
             # execute all requested run stages
             for stage in run_stages:
+
                 # initialize stage
                 run_stage = run_manager.initialize_stage(stage)
+
                 # print initialization message
                 RPSIM_LOGGER.info("Running {}".format(run_stage.__str__()))
+
                 # run stage
                 run_stage.run()
 
@@ -247,7 +251,7 @@ def get_rpsim_config(duration, intensity, frequency, spot_size, frame_name, aver
             {
                 "plot_time_windwow_start_ms": (1 / frequency) * 1e3 * 5,
                 "plot_time_window_end_ms": [x * 2 for x in [duration]],
-                "plot_potential_depth_um": 105#75
+                "plot_potential_depth_um": 75
             }
 
     elif config_type == "MP20":
@@ -343,7 +347,7 @@ def get_rpsim_config(duration, intensity, frequency, spot_size, frame_name, aver
             {
                 "plot_time_windwow_start_ms": (1 / frequency) * 1e3 * 5,
                 "plot_time_window_end_ms": [x * 2 for x in [duration]],
-                "plot_potential_depth_um": 105#75
+                "plot_potential_depth_um": 75
             }
 
     return rpsim_config

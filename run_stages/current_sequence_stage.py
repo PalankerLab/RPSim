@@ -28,21 +28,27 @@ class CurrentSequenceStage(CommonRunStage):
 			'pixel_size': Configuration().params["pixel_size"]
 		}
 
-		# Whether to look for generated patterns or pre-existing patterns
+		# determine whether to look for generated patterns or pre-existing patterns
 		self.is_generated = Configuration().params["generate_pattern"]
 
-		# whether use multiplexed output
+		# determine whether to use multiplexed output
 		self.use_multiplex = 'use_multiplex' in Configuration().params and Configuration().params['use_multiplex']
+
 		# whether multiplexing stage is already run
 		self.is_multiplexed = True if 'multiplex' in Configuration().params and Configuration().params['multiplex'] else False
-		# define paths
+
+		# determine whether to use masked images
+		self.is_masked = RunStages.mask_projection.name in Configuration().params['run_stages']
+
+		# define input folder
 		if self.is_generated:
 			# If the patterns are generated, the source folder is in the output path
 			self.image_sequence_input_folder = self.output_directory
 		else:
 			# When loading existing patterns, the source folder is in the input path
 			self.image_sequence_input_folder = os.path.join(Configuration().params["user_input_path"], "image_sequence",self.output_directory_name)
-		
+
+		# define script path
 		if self.use_multiplex:
 			if len(glob.glob(self.image_sequence_input_folder + "/*multiplexed.csv")) > 0:
 				print("Using seq_time_multiplexed.csv")
@@ -52,7 +58,6 @@ class CurrentSequenceStage(CommonRunStage):
 				self.sequence_script_input_file = os.path.join(self.image_sequence_input_folder, "seq_time.csv")
 		else:
 			self.sequence_script_input_file = os.path.join(self.image_sequence_input_folder, "seq_time.csv")
-
 
 		# initialize gif params
 		self.gif_image = []
@@ -84,12 +89,16 @@ class CurrentSequenceStage(CommonRunStage):
 		:param kwargs:
 		:return:
 		"""
-		# Need to consider if images are multiplex ed
-		if self.is_multiplexed: # multiplex in stage
-			print("Using multiplex list images")
+		# load images from the outputs container based on the last run stage executed
+		if self.is_masked:
+			list_images = self.outputs_container[RunStages.mask_projection.name][0]
+
+		elif self.is_multiplexed:
 			list_images = self.outputs_container[RunStages.multiplexing.name][0]
+
 		elif self.is_generated:
 			list_images = self.outputs_container[RunStages.pattern_generation.name][0]
+
 		self._parse_script_file()
 
 		# duration of the frames in ms
@@ -99,7 +108,7 @@ class CurrentSequenceStage(CommonRunStage):
 			row_dat = [float(x) for x in row[2:] if x]
 
 			# Added rounding
-			assert abs(round(sum(row_dat) - self.video_sequence['duration_frames_ms'], 6))<1e-6, "Frames must be of the same length!" # TODO: change rounding error
+			assert abs(round(sum(row_dat) - self.video_sequence['duration_frames_ms'], 6)) < 1e-6, "Frames must be of the same length!" # TODO: change rounding error
 			self.video_sequence['duration_subframes_ms'].append(row_dat)
 
 		self.video_sequence['Frames'] = [deepcopy(self.video_sequence['duration_subframes_ms']) for _ in range(
@@ -111,7 +120,7 @@ class CurrentSequenceStage(CommonRunStage):
 			image_stack_temp = []
 
 			# added multiplexed here
-			if self.is_generated or self.is_multiplexed:
+			if self.is_generated or self.is_multiplexed or self.is_masked:
 				list_subframes = list_images[frame_idx]
 			
 			# Iterate on the subframes
@@ -146,7 +155,6 @@ class CurrentSequenceStage(CommonRunStage):
 						pixel_idx] * self.max_photo_current_in_ua
 
 				image_stack_temp.append(im.fromarray(np.uint8(image.round())))
-
 
 			number_of_repetitions = self.video_sequence['nb_repetitions_frames'][frame_idx]
 			self.gif_image += image_stack_temp * number_of_repetitions

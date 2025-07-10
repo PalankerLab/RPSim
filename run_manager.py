@@ -18,12 +18,12 @@ from utilities.exceptions import NeededOutputNotFound
 from run_stages.circuit_stage import CircuitStage
 from run_stages.pattern_generation_stage import PatternGenerationStage
 from run_stages.multiplexing_stage import MultiplexingStage
+from run_stages.mask_projection_stage import MaskProjectionStage
 from run_stages.current_sequence_stage import CurrentSequenceStage
 from run_stages.plot_results_stage import PlotResultsStage
 from run_stages.post_process_stage import PostProcessStage
 from run_stages.resistive_mesh_stage import ResistiveMeshStage
 from run_stages.simulation_stage import SimulationStage
-
 
 
 class RunManager:
@@ -44,8 +44,7 @@ class RunManager:
 		# if none are provided, run all stages
 		self.run_stages = list()
 		skip_stages = skip_stages if skip_stages else list()
-		run_stages = run_stages if run_stages else [stage for stage in StageManager.get_all_available_run_stages() if
-													stage not in skip_stages]
+		run_stages = run_stages if run_stages else [stage for stage in StageManager.get_all_available_run_stages() if stage not in skip_stages]
 		if isinstance(run_stages, str):
 			self.run_stages.append(run_stages)
 		else:
@@ -63,9 +62,11 @@ class RunManager:
 	@staticmethod
 	def _stage_data_factory(stage):
 		if stage == RunStages.pattern_generation.name: 
-			stage_data = PatternGenerationStage, ["list_ndarray_images.pkl", "seq_time.csv", "dict_PIL_images.bmp"], Configuration().params["video_sequence_name"]		
+			stage_data = PatternGenerationStage, ["list_ndarray_images.pkl", "seq_time.csv", "dict_PIL_images.bmp"], Configuration().params["video_sequence_name"]
 		elif stage == RunStages.multiplexing.name:
 			stage_data = MultiplexingStage, ["list_ndarray_images_multiplexed.pkl", "seq_time_multiplexed.csv", "dict_PIL_images_multiplexed.bmp"], Configuration().params["video_sequence_name"]
+		elif stage == RunStages.mask_projection.name:
+			stage_data = MaskProjectionStage, ["list_ndarray_images_masked.pkl", "dict_PIL_images_masked.bmp"], ""
 		elif stage == RunStages.resistive_mesh.name:
 			stage_data = ResistiveMeshStage, [Configuration().params["r_matrix_output_file"]], ""
 		elif stage == RunStages.current_sequence.name:
@@ -75,10 +76,9 @@ class RunManager:
 		elif stage == RunStages.simulation.name:
 			stage_data = SimulationStage, ["simulation_results.pkl"], ""
 		elif stage == RunStages.post_process.name:
-			stage_data = PostProcessStage, ["{}.pkl".format(Configuration().params["video_sequence_name"])], \
-				RunStages.post_process.name
+			stage_data = PostProcessStage, ["{}.pkl".format(Configuration().params["video_sequence_name"])], RunStages.post_process.name
 		elif stage == RunStages.plot_results.name:
-			stage_data =  PlotResultsStage, ["diode_voltage_vs_time.png", "current_vs_time.png", "pixels_location.png", "on_diode_pulse.png", "heatmap_currents.png","field_cross_section.png"], ""
+			stage_data = PlotResultsStage, ["diode_voltage_vs_time.png", "current_vs_time.png", "pixels_location.png", "on_diode_pulse.png", "heatmap_currents.png", "field_cross_section.png"], ""
 		else:
 			raise KeyError("The requested run stage is not supported")
 
@@ -114,7 +114,7 @@ class RunManager:
 		return self.outputs_container[stage] if index is None else self.outputs_container[stage][index]
 
 	def get_stage_output_file_names(self, stage, index=None):
-		output_file_names =  self._stage_data_factory(stage)["output_file_names"]
+		output_file_names = self._stage_data_factory(stage)["output_file_names"]
 		return output_file_names if not index else output_file_names[index]
 
 	def get_stage_output_directory_name(self, stage):

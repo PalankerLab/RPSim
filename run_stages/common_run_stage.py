@@ -64,11 +64,11 @@ class CommonRunStage(ABC):
 
 			# save stage outputs
 			for number, output in enumerate(self._stage_output):
+
 				# save to file
 				file_name = self.output_file_names[number] if number < len(self.output_file_names) else None
-				#file_name = None if isinstance(output,str) and os.path.isdir(output) else self.output_file_names[
-				# number]
 				CommonUtils.store_output(output_directory=self.output_directory, output=output, file_name=file_name)
+
 				# save to runtime structure
 				self.outputs_container[self.stage_name].append(output)
 

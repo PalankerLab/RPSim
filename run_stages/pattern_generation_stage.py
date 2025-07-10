@@ -49,8 +49,7 @@ class PatternGenerationStage(CommonRunStage):
         """
         if Configuration().params["generate_pattern"]:
 
-            ###x Object based implementation
-            
+            ### Object based implementation
             projection_sequence = Configuration().params["projection_sequences"]
             self.script = projection_sequence.get_script()
 
@@ -62,7 +61,7 @@ class PatternGenerationStage(CommonRunStage):
 
                 # Iterate on the subframes for the given frame
                 for idx, subframe in enumerate(frame):
-                    drawing_board = ImagePattern(pixel_size = Configuration().params["pixel_size"])
+                    drawing_board = ImagePattern(pixel_size=Configuration().params["pixel_size"])
                     # Several patterns can be added to a drawing_board / subframe
                     for pattern in subframe:
                         # Draw the provided pattern

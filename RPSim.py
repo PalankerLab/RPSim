@@ -55,6 +55,9 @@ def run_rpsim(configuration=None, run_stages=None, skip_stages=None):
 			run_stages = run_manager.get_requested_run_stages()
 			RPSIM_LOGGER.info("Requested run stages: {}".format(list(run_stages)))
 
+			# add list of run stages to the configuration
+			configuration_manager.add_parameter('run_stages', list(run_stages))
+
 			# print current configuration to file
 			# RPSIM_LOGGER.info("Running the following configuration\n{}\n".format(configuration_manager.get_configuration_as_table()))
 			# print current configuration to file
