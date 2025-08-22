@@ -336,7 +336,6 @@ class PostProcessStage(CommonRunStage):
 		for pixel in range(nb_pixels_return):	
 			self.interpolated_return_current_ua[pixel, :] = np.interp(self.interpolated_pulse_time_ms, pulse_time, return_current_ua[pixel, :])
 
-						
 	def _get_currents_for_time_averaging(self, start_time, end_time):
 		"""
 		This function returns the correct currents and time vector for the time window of interst

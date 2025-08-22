@@ -22,12 +22,12 @@ class PlotResultsStage(CommonRunStage):
 
 		# To plot the electrode map location we need their position.
 		# The information is extracted through ImagePattern class.
-		tmp = ImagePattern(pixel_size = Configuration().params["pixel_size"])
+		tmp = ImagePattern(pixel_size=Configuration().params["pixel_size"])
 		dist_matrix = tmp.create_distance_matrix()
 		self.central_electrode = tmp.determine_central_label(dist_matrix)
 		self.pixel_labels = tmp.pixel_labels
 
-		self.time_start_ms = Configuration().params["plot_time_windwow_start_ms"]
+		self.time_start_ms = Configuration().params["plot_time_window_start_ms"]
 		self.time_end_ms = Configuration().params["plot_time_window_end_ms"]
 		
 		# Colors for plotting certain pixels
@@ -106,10 +106,10 @@ class PlotResultsStage(CommonRunStage):
 		output_figures.append(fig5)
 
 		if RunStages.post_process.name in self.outputs_container:
-			fig6 = self.plot_cross_section_field()
+			fig6, fig7 = self.plot_cross_section_field()
 		else:
-			fig6 = None
-		output_figures.append(fig6)
+			fig6, fig7 = None
+		output_figures.extend([fig6, fig7])
 		
 		return output_figures
 
@@ -198,38 +198,122 @@ class PlotResultsStage(CommonRunStage):
 
 		return fig
 	
+	# def plot_cross_section_field(self):
+	# 	"""
+	# 	Plot the resulting electric field for a given z-slice, depth,
+	# 	and given time window.
+	# 	"""
+	#
+	# 	field = self.post_process_results["v(x,y,z,t)_mv"]
+	# 	depth_um = Configuration().params["plot_potential_depth_um"]
+	# 	existing_depths = self.post_process_results["z_um"]
+	# 	existing_times = self.post_process_results["t_start_ms"]
+	# 	# Extract the closest existing depth slice in the post process results
+	# 	idx_depth = np.argmin(np.abs(np.array(existing_depths) - depth_um))
+	# 	# Extract the closest existing time slice in the post process results
+	# 	idx_time = np.argmin(np.abs(np.array(existing_times) - self.time_start_ms))
+	#
+	# 	# Get the correct frame size
+	# 	frame_size = self.post_process_results["2d_mesh_um"]
+	# 	min_x, max_x, min_y, max_y = frame_size[0].min(), frame_size[0].max(), frame_size[1].min(), frame_size[1].max()
+	#
+	# 	fig = plt.figure(figsize=(6, 5))
+	# 	plt.imshow(field[:,:,idx_depth, idx_time], cmap='inferno', extent=(min_x, max_x, min_y, max_y))
+	# 	plt.xticks(fontsize=11)
+	# 	plt.yticks(fontsize=11)
+	# 	plt.xlabel("x-Distance [$\mu m$]", fontsize=15)
+	# 	plt.ylabel("y-Distance [$\mu m$]", fontsize=15)
+	#
+	# 	cbar = plt.colorbar()
+	# 	cbar.set_label("Potential [$mV$]", fontsize=18)
+	# 	cbar.ax.tick_params(labelsize=16)
+	#
+	# 	plt.title(f'Potential in the retina\n Z={existing_depths[idx_depth]} $\mu m$ [{existing_times[idx_time]:.1f}-{existing_times[idx_time] + Configuration().params["time_averaging_resolution_ms"]:.1f} ms]', fontsize=20)
+	# 	plt.tight_layout()
+	#
+	# 	return fig
+
 	def plot_cross_section_field(self):
-		"""
-		Plot the resulting electric field for a given z-slice, depth,
-		and given time window. 
-		"""
-		
 		field = self.post_process_results["v(x,y,z,t)_mv"]
 		depth_um = Configuration().params["plot_potential_depth_um"]
+		time_window_end = Configuration().params["plot_time_window_end_ms"]
+
 		existing_depths = self.post_process_results["z_um"]
 		existing_times = self.post_process_results["t_start_ms"]
-		# Extract the closest existing depth slice in the post process results
+
+		# extract the closest existing depth slice
 		idx_depth = np.argmin(np.abs(np.array(existing_depths) - depth_um))
-		# Extract the closest existing time slice in the post process results
-		idx_time = np.argmin(np.abs(np.array(existing_times) - self.time_start_ms))
 
-		# Get the correct frame size
+		# get the correct frame size
 		frame_size = self.post_process_results["2d_mesh_um"]
-		min_x, max_x, min_y, max_y = frame_size[0].min(), frame_size[0].max(), frame_size[1].min(), frame_size[1].max()
+		min_x, max_x = frame_size[0].min(), frame_size[0].max()
+		min_y, max_y = frame_size[1].min(), frame_size[1].max()
 
-		fig = plt.figure(figsize=(6, 5))
-		plt.imshow(field[:,:,idx_depth, idx_time], cmap='inferno', extent=(min_x, max_x, min_y, max_y))
-		plt.xticks(fontsize=11)
-		plt.yticks(fontsize=11)
-		plt.xlabel("x-Distance [$\mu m$]", fontsize=15)
-		plt.ylabel("y-Distance [$\mu m$]", fontsize=15)
+		# slice: xy plane over all times at this z
+		xy_t = field[:, :, idx_depth, :]
 
-		cbar = plt.colorbar()
-		cbar.set_label("Potential [$mV$]", fontsize=18)
-		cbar.ax.tick_params(labelsize=16)
-	
-		plt.title(f'Potential in the retina\n Z={existing_depths[idx_depth]} $\mu m$ [{existing_times[idx_time]:.1f}-{self.post_process_results["t_end_ms"][idx_time]:.1f} ms]', fontsize=20)
+		# find time index of max and min
+		t_max_idx = np.argmax(xy_t.max(axis=(0, 1)))
+		t_min_idx = np.argmin(xy_t.min(axis=(0, 1)))
+
+		# compute average over all times
+		xy_avg = xy_t.mean(axis=2)
+
+		# compute average over requested time window
+		idx_time_start = np.argmin(np.abs(np.array(existing_times) - self.time_start_ms))
+		idx_time_end = np.argmin(np.abs(np.array(existing_times) - time_window_end))
+		if idx_time_start > idx_time_end:
+			idx_time_start, idx_time_end = idx_time_end, idx_time_start
+		xy_avg_window = xy_t[:, :, idx_time_start:idx_time_end + 1].mean(axis=2)
+
+		# -------- summary figure (2x2) --------
+		fig_summary, axes = plt.subplots(2, 2, figsize=(12, 10))
+
+		def add_panel(ax, data, title):
+			im = ax.imshow(data, cmap="inferno", extent=(min_x, max_x, min_y, max_y))
+			ax.set_title(title, fontsize=12)
+			ax.set_xlabel("x-Distance [$\mu m$]")
+			ax.set_ylabel("y-Distance [$\mu m$]")
+			cbar = fig_summary.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+			cmin, cmax = im.get_clim()
+			cbar.set_ticks([cmin, cmax])
+			cbar.set_ticklabels([f"{cmin:.1f}", f"{cmax:.1f}"])
+			return im
+
+		add_panel(axes[0, 0], xy_t[:, :, t_max_idx],
+				  f"Max potential\nZ={existing_depths[idx_depth]} μm, t={existing_times[t_max_idx]:.1f} ms")
+		add_panel(axes[0, 1], xy_t[:, :, t_min_idx],
+				  f"Min potential\nZ={existing_depths[idx_depth]} μm, t={existing_times[t_min_idx]:.1f} ms")
+		add_panel(axes[1, 0], xy_avg,
+				  f"Average across all times\nZ={existing_depths[idx_depth]} μm")
+		add_panel(axes[1, 1], xy_avg_window,
+				  f"Average {existing_times[idx_time_start]:.1f}–{existing_times[idx_time_end]:.1f} ms\nZ={existing_depths[idx_depth]} μm")
+
 		plt.tight_layout()
 
-		return fig
+		# -------- all time indices figure --------
+		n_times = xy_t.shape[2]
+		ncols = int(np.ceil(np.sqrt(n_times)))
+		nrows = int(np.ceil(n_times / ncols))
+
+		fig_all, axes_all = plt.subplots(nrows, ncols, figsize=(3 * ncols, 3 * nrows))
+		axes_all = axes_all.flatten()
+
+		for i in range(n_times):
+			im = axes_all[i].imshow(xy_t[:, :, i], cmap="inferno", extent=(min_x, max_x, min_y, max_y))
+			axes_all[i].set_title(f"t={existing_times[i]:.1f} ms", fontsize=9)
+			axes_all[i].set_xticks([])
+			axes_all[i].set_yticks([])
+			cbar = fig_all.colorbar(im, ax=axes_all[i], fraction=0.046, pad=0.04)
+			cmin, cmax = im.get_clim()
+			cbar.set_ticks([cmin, cmax])
+			cbar.set_ticklabels([f"{cmin:.1f}", f"{cmax:.1f}"])
+
+		# remove unused subplots if any
+		for j in range(n_times, len(axes_all)):
+			fig_all.delaxes(axes_all[j])
+
+		plt.tight_layout()
+
+		return fig_summary, fig_all
 

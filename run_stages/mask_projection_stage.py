@@ -55,7 +55,7 @@ class MaskProjectionStage(CommonRunStage):
                     self.input_projection_script.append(row)
 
         # define path to mask image
-        self.mask_path = os.path.join(Configuration().params["user_input_path"], 'FF1_Mask_Center.tif')
+        self.mask_path = os.path.join(Configuration().params["user_input_path"], 'projection_mask', 'AVG_FF_Mask.tif')
 
     @property
     def stage_name(self):

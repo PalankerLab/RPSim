@@ -249,8 +249,8 @@ def get_rpsim_config(duration, intensity, frequency, spot_size, frame_name, aver
 
         rpsim_config["plot_results"] = \
             {
-                "plot_time_windwow_start_ms": (1 / frequency) * 1e3 * 5,
-                "plot_time_window_end_ms": [x * 2 for x in [duration]],
+                "plot_time_window_start_ms": (1 / frequency) * 1e3 * 5,
+                "plot_time_window_end_ms": [x for x in [duration]],
                 "plot_potential_depth_um": 75
             }
 
@@ -345,8 +345,8 @@ def get_rpsim_config(duration, intensity, frequency, spot_size, frame_name, aver
 
         rpsim_config["plot_results"] = \
             {
-                "plot_time_windwow_start_ms": (1 / frequency) * 1e3 * 5,
-                "plot_time_window_end_ms": [x * 2 for x in [duration]],
+                "plot_time_window_start_ms": (1 / frequency) * 1e3 * 5,
+                "plot_time_window_end_ms": [x for x in [duration]],
                 "plot_potential_depth_um": 75
             }
 
