@@ -51,6 +51,7 @@ class PatternGenerationStage(CommonRunStage):
 
             ### Object based implementation
             projection_sequence = Configuration().params["projection_sequences"]
+            drawing_board_background = Configuration().params["drawing_board_background"]
             self.script = projection_sequence.get_script()
 
             # Iterate on the frames of the projection
@@ -61,7 +62,7 @@ class PatternGenerationStage(CommonRunStage):
 
                 # Iterate on the subframes for the given frame
                 for idx, subframe in enumerate(frame):
-                    drawing_board = ImagePattern(pixel_size=Configuration().params["pixel_size"])
+                    drawing_board = ImagePattern(pixel_size=Configuration().params["pixel_size"], drawing_board_background=drawing_board_background)
                     # Several patterns can be added to a drawing_board / subframe
                     for pattern in subframe:
                         # Draw the provided pattern
@@ -111,7 +112,7 @@ class ImagePattern():
         scaled_pixel (int): The size of the pixel in image-pixel 
     """
 
-    def __init__(self, pixel_size):
+    def __init__(self, pixel_size, drawing_board_background):
 
         self.pixel_size = pixel_size
         suffix = Configuration().params["pixel_size_suffix"] # Whether we use the large file "_lg" or not
@@ -125,7 +126,9 @@ class ImagePattern():
 
         self.background_overlay = self.implant_layout.copy() 
         self.background_overlay.putalpha(255) # Remove transparency to fully opaque
-        self.projected = Image.new("RGB", self.background_overlay.size, "black")
+        # self.projected = Image.new("RGB", self.background_overlay.size, "black")
+        self.projected = Image.new("RGB", self.background_overlay.size, drawing_board_background)
+
 
         self.opacity = 180 # (0, 255) (transparent to opaque)
         self.image_pixel_scale = self.find_image_scale()
@@ -423,8 +426,9 @@ class ImagePattern():
         n_lines = len(lines)
         max_len = len(max(lines, key=len))
         image_size = (np.ceil(letter_size * max_len).astype(int), np.ceil(letter_size * n_lines).astype(int))
-        # Create a rnew image with a transparent background
-        text_image = Image.new('RGBA', image_size, (0, 0, 0, 0))
+        # Create a new image with a transparent background
+        # text_image = Image.new('RGBA', image_size, (0, 0, 0, 0))
+        text_image = Image.new('RGBA', image_size, (*pattern.background_color, pattern.background_opacity))
 
         # Convert to drawing, set the font, and write text
         text_drawing = ImageDraw.Draw(text_image)
@@ -433,7 +437,7 @@ class ImagePattern():
         text_drawing.text((0, 0), pattern.text, font=font, fill=pattern.fill_color, align='center', spacing=0) # TODO check for the desired vertical spacing, if non-zero, increase image_size height by spacing, eventually use ImageDraw.textbox()
         
         # Rotate with expansion of the image (i.e. no crop)
-        text_image = text_image.rotate(pattern.rotation, expand = 1)
+        text_image = text_image.rotate(pattern.rotation, expand=1)
 
         # Compute the new position taking into account the user position, the offset due to image size
         # and the new size due to rotation expansion
@@ -646,10 +650,12 @@ class Pattern():
         rotation (float): The clockwise rotation of the pattern in degrees
         unit (float): Either 'pixel' or 'um'. Pixel for features which are multiples of the pixel size, or um for micrometers.      
     """
-    def __init__(self, postion=(0, 0), rotation=0, unit="pixel", fill_color=(255, 255, 255)):
+    def __init__(self, postion=(0, 0), rotation=0, unit="pixel", fill_color=(255, 255, 255), background_color=(0, 0, 0)):
         self.position = postion
         self.rotation = rotation
         self.fill_color = fill_color
+        self.background_color = background_color
+        self.background_opacity = 0 if background_color == (0, 0, 0) else 255
         
         if not isinstance(unit, str):
             raise ValueError(f"The unit should be of a type str, and equal to 'um' or 'pixel', not '{unit}'.")
@@ -687,8 +693,8 @@ class Text(Pattern):
             -> the letter size should be 5 times the gap size
             -> the computation are done in image pixel through self.scaled_pixel or self.image_pixel_scale
     """    
-    def __init__(self, position=(0, 0), rotation=0, text="C", unit="pixel", letter_size=5, gap_size=None, fill_color=(255, 255, 255)):
-        super().__init__(position, rotation, unit, fill_color=fill_color)
+    def __init__(self, position=(0, 0), rotation=0, text="C", unit="pixel", letter_size=5, gap_size=None, fill_color=(255, 255, 255), background_color=(0, 0, 0)):
+        super().__init__(position, rotation, unit, fill_color=fill_color, background_color=background_color)
         self.letter_size = letter_size
         self.text = text
         
@@ -741,8 +747,8 @@ class Rectangle(Pattern):
         width (float): The rectangle's width in micron
         height (float): The rectangle's height in micron
     """    
-    def __init__(self, position=(0, 5), rotation=0, unit="pixel", width=100, height=100, fill_color=(255, 255, 255)):
-        super().__init__(position, rotation, unit, fill_color=fill_color)
+    def __init__(self, position=(0, 5), rotation=0, unit="pixel", width=100, height=100, fill_color=(255, 255, 255), background_color=(0, 0, 0)):
+        super().__init__(position, rotation, unit, fill_color=fill_color, background_color=background_color)
         self.width = width
         self.height = height 
     

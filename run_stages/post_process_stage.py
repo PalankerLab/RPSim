@@ -25,6 +25,7 @@ from tqdm import tqdm
 from multiprocessing.pool import Pool
 from multiprocessing import cpu_count
 
+
 class PostProcessStage(CommonRunStage):
 	"""
 	This class implements the logic for the simulation stage, which executes the previously generated circuit in Xyce,
@@ -86,6 +87,9 @@ class PostProcessStage(CommonRunStage):
 		self.active_x = active_results[0, :]
 		self.active_voltage_mv = active_results[1:, :]
 
+		# scale active voltage by the conductivity, if needed
+		self.active_voltage_mv = self.active_voltage_mv / Configuration().params.get("r_matrix_conductivity")
+
 		# Time analysis - Averaging resolution
 		if self.average_over_pulse_duration:
 			# If we average over pulse duration, the time resolution is simply the pulse duration
@@ -97,10 +101,8 @@ class PostProcessStage(CommonRunStage):
 		self.window_start_ms = self.pulse_start_time_ms - self.pulse_extra_ms
 		self.window_end_ms = self.pulse_start_time_ms + self.pulse_duration_ms + self.pulse_extra_ms
 		self.time_points_to_analyze_ms = self._get_time_sections()
-		##
 		self.time_start_ms, self.time_end_ms = self._get_time_sections_new()
-		##
-    
+
 		self._initialize_depth_values()
 
 		# initialize for symmetry, will be overriden in the bipolar case
@@ -120,10 +122,13 @@ class PostProcessStage(CommonRunStage):
 			self.y_frame = V_dict[1,:]
 			self.V_dict_ret = V_dict[2:, :]
 
+			# scale global return voltage by the conductivity, if needed
+			self.V_dict_ret = self.V_dict_ret / Configuration().params.get("r_matrix_conductivity")
+
 			# Load the currents for all the time points
 			self.full_active_current_ua = np.array([self.simulation_stage_output[f'VCProbe{x + 1}'] for x in range(self.number_of_pixels)]) * 1E6 
 			self.full_return_current_ua = np.array(self.simulation_stage_output[f'VCProbe{0}']) * 1E6 
-			# Convert the monopolar currents to a 2D array for compatibility with bipolar configuration - shape (1, nb_time_points)
+			# Convert monopolar currents to 2D array for compatibility with bipolar configuration - shape (1, nb_time_points)
 			self.full_return_current_ua = np.reshape(self.full_return_current_ua, (1,-1))
 
 		if Configuration().params["model"] == Models.BIPOLAR.value:
@@ -137,22 +142,24 @@ class PostProcessStage(CommonRunStage):
 			self.return_x = return_results[0, :]
 			self.return_voltage_mv = return_results[1:, :]
 
+			# scale global return by the conductivity, if needed
+			self.return_voltage_mv = self.return_voltage_mv / Configuration().params.get("r_matrix_conductivity")
+
 			return_near_results = load_csv(Configuration().params["r_matrix_input_file_return_near"])
 			self.x_return_near = return_near_results[0, :]
 			self.y_return_near = return_near_results[1, :]
 			self.return_near_voltage_mv = return_near_results[2:, :]
 
-			# create a 2D and a 3D mesh for populating the potential matrices
-			frame_width = Configuration().params["frame_width"]
-			self.x_frame = np.arange(start=-frame_width, stop=frame_width + 1, step=4)
-			self.y_frame = np.arange(start=-frame_width, stop=frame_width + 1, step=4)
+			# scale local return voltage by the conductivity, if needed
+			self.return_near_voltage_mv = self.return_near_voltage_mv / Configuration().params.get("r_matrix_conductivity")
 
-		##### Parameters common to bipolar and monopolar configurations ####
-			
+		# Parameters common to bipolar and monopolar configurations
+		# create a 2D and a 3D mesh for populating the potential matrices
+		frame_width = Configuration().params["frame_width"]
+		self.x_frame = np.arange(start=-frame_width, stop=frame_width + 1, step=4)
+		self.y_frame = np.arange(start=-frame_width, stop=frame_width + 1, step=4)
+
 		self.xx, self.yy = np.meshgrid(self.x_frame, self.y_frame)
-		# The 3D mesh is not being used anymore, but I left the line of code just in case
-		#self.xxx, self.yyy, self.zzz = np.meshgrid(self.x_frame, self.y_frame, self.z_values) 
-
 		self.xx_element = np.zeros([self.x_frame.size * self.y_frame.size, self.number_of_pixels])
 		self.yy_element = np.zeros([self.x_frame.size * self.y_frame.size, self.number_of_pixels])
 		for kk in range(self.number_of_pixels):
@@ -389,7 +396,7 @@ class PostProcessStage(CommonRunStage):
 			voltage_xy_matrix (Numpy.array (?, ?)): The 2D voltage map for the given z and t slices
 		"""
 		
-		# TODO change z_index variable name to z_value and ask Nathan whether his V_elem is 0 index or 1 indexed!
+		# TODO change z_index variable name to z_value and check whether V_elem is 0 index or 1 indexed!
 		if Configuration().params["model"] == Models.MONOPOLAR.value:
 			# Actual computations for the XY potential at a a given z-height
 			V_elem_act = np.interp(self.dist_elem, self.active_x, self.active_voltage_mv[z_value, :])
@@ -579,7 +586,7 @@ class PostProcessStage(CommonRunStage):
 				voltage_3d_matrix[:, :, z_index] = voltage_2d_matrix
 
 		else:
-			with tqdm(total = len(self.depth_values_in_um), file = sys.stdout) as pbar_z: # used for PROGRESS BAR
+			with tqdm(total = len(self.depth_values_in_um), file=sys.stdout) as pbar_z: # used for PROGRESS BAR
 				for z_index, z_value in enumerate(self.depth_indices):
 					# Progress bar 
 					pbar_z.set_description(f'Processing Z-slice: {1 + z_index} of time point {pb_idx_time + 1}/{pb_total_time}')

@@ -55,7 +55,8 @@ class MaskProjectionStage(CommonRunStage):
                     self.input_projection_script.append(row)
 
         # define path to mask image
-        self.mask_path = os.path.join(Configuration().params["user_input_path"], 'projection_mask', 'AVG_FF_Mask.tif')
+        # self.mask_path = os.path.join(Configuration().params["user_input_path"], 'projection_mask', 'AVG_FF.tif')
+        self.mask_path = os.path.join(Configuration().params["user_input_path"], 'projection_mask', "slanted_iris_20251104\AVG_captured_images_mask.tif")
 
     @property
     def stage_name(self):
@@ -63,7 +64,6 @@ class MaskProjectionStage(CommonRunStage):
 
     def run_stage(self, *args, **kwargs):
         # iterate the frames and for each frame extract its sub-frames
-        # frame_info = {}
         for frame_idx in range(len(self.input_projection_script) - 4):
 
             # set frame name
@@ -71,9 +71,6 @@ class MaskProjectionStage(CommonRunStage):
 
             # get number of sub-frames for the current frame
             number_of_sub_frames = len(self.input_projection_script[4 + frame_idx]) - 2
-
-            # initialize frame info
-            # frame_info[frame_name] = {}
 
             list_tmp_bmp = []
             list_tmp_array = []
@@ -123,6 +120,107 @@ class MaskProjectionStage(CommonRunStage):
         # return the mask image
         return tiff_mask
 
+    # def _apply_mask(self, img):
+    #     return img, np.array(img)
+
+    # def _apply_mask(self, img, tilt_angle_deg=(1, 1), size_mm=1.5):
+    #     """
+    #     generate a per-pixel mask for a flat plane tilted about x and y axes.
+    #     top/bottom and left/right pixels vary in intensity based on tilt.
+    #     """
+    #     img_array = np.array(img).astype(np.float32)
+    #     H, W = img_array.shape[:2]
+    #
+    #     # convert tilt to radians (tilt_angle_deg can be scalar or tuple)
+    #     if np.isscalar(tilt_angle_deg):
+    #         tilt_angle_deg = (tilt_angle_deg, 0)
+    #     theta_y = np.deg2rad(tilt_angle_deg[0])  # tilt around x-axis (vertical)
+    #     theta_x = np.deg2rad(tilt_angle_deg[1])  # tilt around y-axis (horizontal)
+    #     cos_theta = np.cos(theta_y) * np.cos(theta_x)
+    #
+    #     # physical coordinates (centered)
+    #     y = np.linspace(-size_mm / 2, size_mm / 2, H)
+    #     x = np.linspace(-size_mm / 2, size_mm / 2, W)
+    #     X, Y = np.meshgrid(x, y)
+    #
+    #     # z offset due to combined tilt
+    #     z_offset = Y * np.tan(theta_y) + X * np.tan(theta_x)
+    #
+    #     # normalize for visual spatial variation
+    #     mask_2d = cos_theta * (z_offset.max() - z_offset) / (z_offset.max() - z_offset.min())
+    #     mask_2d = np.clip(mask_2d, 0, 1)
+    #
+    #     # apply to image (supports grayscale or rgb)
+    #     if img_array.ndim == 3 and img_array.shape[2] == 3:
+    #         mask_2d = mask_2d[..., None]
+    #
+    #     masked = img_array * mask_2d
+    #     masked_subframe_array = np.clip(masked / masked.max() * 255, 0, 255).astype(np.uint8)
+    #     masked_subframe_image = Image.fromarray(masked_subframe_array)
+    #
+    #     # optional visualization
+    #     plt.figure(figsize=(8, 4))
+    #     plt.subplot(1, 2, 1)
+    #     plt.title("per-pixel mask")
+    #     plt.imshow(mask_2d.squeeze(), cmap='gray', vmin=0, vmax=1)
+    #     plt.colorbar()
+    #     plt.subplot(1, 2, 2)
+    #     plt.title("masked image")
+    #     plt.imshow(masked_subframe_array)
+    #     plt.axis("off")
+    #     plt.tight_layout()
+    #     plt.show()
+    #
+    #     return masked_subframe_image, masked_subframe_array
+
+    # def _apply_mask(self, img, tilt_angle_deg=1, size_mm=1.5):
+    #     """
+    #     Generate a per-pixel mask for a flat plane tilted about x-axis.
+    #     Top pixels are closer to the beam, bottom farther.
+    #     """
+    #     img_array = np.array(img).astype(np.float32)
+    #     H, W = img_array.shape[:2]
+    #
+    #     # Convert tilt to radians
+    #     theta = np.deg2rad(tilt_angle_deg)
+    #     cos_theta = np.cos(theta)
+    #
+    #     # Physical y coordinates (centered)
+    #     y = np.linspace(-size_mm / 2, size_mm / 2, H)
+    #
+    #     # z offset due to tilt
+    #     z_offset = y * np.tan(theta)
+    #
+    #     # Normalize for visual spatial variation (optional)
+    #     mask_1d = cos_theta * (z_offset.max() - z_offset) / (z_offset.max() - z_offset.min())
+    #     mask_1d = np.clip(mask_1d, 0, 1)
+    #
+    #     # Expand to 2D
+    #     mask_2d = np.tile(mask_1d[:, np.newaxis], (1, W))
+    #
+    #     # # Apply to image (supports grayscale or RGB)
+    #     if img_array.ndim == 3 and img_array.shape[2] == 3:
+    #         mask_2d = mask_2d[..., None]
+    #
+    #     masked = img_array * mask_2d
+    #     masked_subframe_array = np.clip(masked / masked.max() * 255, 0, 255).astype(np.uint8)
+    #     masked_subframe_image = Image.fromarray(masked_subframe_array)
+    #
+    #     # Optional visualization
+    #     plt.figure(figsize=(8, 4))
+    #     plt.subplot(1, 2, 1)
+    #     plt.title("Per-pixel mask")
+    #     plt.imshow(mask_2d, cmap='gray', vmin=0, vmax=1)
+    #     plt.colorbar()
+    #     plt.subplot(1, 2, 2)
+    #     plt.title("Masked image")
+    #     plt.imshow(masked_subframe_array)
+    #     plt.axis("off")
+    #     plt.tight_layout()
+    #     plt.show()
+    #
+    #     return masked_subframe_image, masked_subframe_array
+
     def _apply_mask(self, subframe_image):
         # load the TIFF mask (can be 16-bit or float)
         mask_image = self._load_mask_image()
@@ -132,7 +230,7 @@ class MaskProjectionStage(CommonRunStage):
         plt.title("Original Mask")
         plt.imshow(mask_image, cmap='gray')
         plt.colorbar()
-        plt.show()
+        plt.show(block=False)
 
         # resize the mask to match the target image size
         img_array = np.array(subframe_image)
@@ -144,22 +242,28 @@ class MaskProjectionStage(CommonRunStage):
         plt.title("Resized Mask")
         plt.imshow(resized_mask, cmap='gray')
         plt.colorbar()
-        plt.show()
+        plt.show(block=False)
 
-        # upcast image to match mask's dtype & scale
-        if np.issubdtype(resized_mask.dtype, np.floating):
-            img_upcast = img_array.astype(np.float32)
-        elif np.issubdtype(resized_mask.dtype, np.integer):
-            img_upcast = img_array.astype(np.float32) / UINT8_MAX * UINT16_MAX
-        else:
-            raise TypeError("Unsupported mask dtype")
+        # # upcast image to match mask's dtype & scale
+        # if np.issubdtype(resized_mask.dtype, np.floating):
+        #     img_upcast = img_array.astype(np.float32)
+        # elif np.issubdtype(resized_mask.dtype, np.integer):
+        #     img_upcast = img_array.astype(np.float32) / UINT8_MAX * UINT16_MAX
+        # else:
+        #     raise TypeError("Unsupported mask dtype")
 
         # expand mask to 3 channels if needed
         if resized_mask.ndim == 2:
             resized_mask = np.expand_dims(resized_mask, axis=2)
 
+        # normalize mask so max == 1 (preserve original at max, scale others)
+        mask_max = np.max(resized_mask)
+        if mask_max == 0:
+            raise ValueError("Mask maximum is zero; cannot normalize.")
+        normalized_mask = resized_mask / mask_max
+
         # multiply the mask by the original frame in high precision
-        masked = img_upcast * resized_mask
+        masked = img_array * normalized_mask
 
         # rescale the result back to 8-bit (0–255)
         masked_subframe_array = masked / masked.max() * UINT8_MAX
@@ -173,7 +277,7 @@ class MaskProjectionStage(CommonRunStage):
         plt.title("Final Masked Image")
         plt.imshow(masked_subframe_array)
         plt.axis("off")
-        plt.show()
+        plt.show(block=False)
 
         return masked_subframe_image, masked_subframe_array
 

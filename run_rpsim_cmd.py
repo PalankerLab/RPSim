@@ -146,6 +146,8 @@ def get_rpsim_config(duration, intensity, frequency, spot_size, frame_name, aver
     else:
         frame_content = [Subframe(duration_ms=duration, patterns=[FullField(fill_color='white')]),
                          Subframe(duration_ms=duration_off, patterns=[FullField('black')])]
+        # frame_content = [Subframe(duration_ms=duration, patterns=[Rectangle(width=8, height=8, position=(-4, 4), unit="pixel", rotation=0)]),
+        #              Subframe(duration_ms=duration_off, patterns=[FullField('black')])]
 
     frames = [Frame(name=frame_name, repetitions=1, subframes=frame_content)]
 
@@ -171,7 +173,7 @@ def get_rpsim_config(duration, intensity, frequency, spot_size, frame_name, aver
 
         # R matrix parameters
         rpsim_config["r_matrix_output_file"] = f'R_{rpsim_config["geometry"]}_PS{rpsim_config["pixel_size"]}{rpsim_config["pixel_size_suffix"]}.pkl'
-        rpsim_config["r_matrix_conductivity"] = 1.52
+        rpsim_config["r_matrix_conductivity"] = 1/3
 
         # dynamic simulation configuration
         rpsim_config["Ipho_scaling"] = 1
@@ -251,7 +253,7 @@ def get_rpsim_config(duration, intensity, frequency, spot_size, frame_name, aver
             {
                 "plot_time_window_start_ms": (1 / frequency) * 1e3 * 5,
                 "plot_time_window_end_ms": [x for x in [duration]],
-                "plot_potential_depth_um": 75
+                "plot_potential_depth_um": 5#75
             }
 
     elif config_type == "MP20":
@@ -270,7 +272,7 @@ def get_rpsim_config(duration, intensity, frequency, spot_size, frame_name, aver
 
         # R matrix parameters
         rpsim_config["r_matrix_output_file"] = f'R_{rpsim_config["geometry"]}_PS{rpsim_config["pixel_size"]}{rpsim_config["pixel_size_suffix"]}.pkl'
-        rpsim_config["r_matrix_conductivity"] = 1.52
+        rpsim_config["r_matrix_conductivity"] = 1/3
 
         # dynamic simulation configuration
         rpsim_config["Ipho_scaling"] = 1
@@ -347,7 +349,7 @@ def get_rpsim_config(duration, intensity, frequency, spot_size, frame_name, aver
             {
                 "plot_time_window_start_ms": (1 / frequency) * 1e3 * 5,
                 "plot_time_window_end_ms": [x for x in [duration]],
-                "plot_potential_depth_um": 75
+                "plot_potential_depth_um": 5#75
             }
 
     return rpsim_config

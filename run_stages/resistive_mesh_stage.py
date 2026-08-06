@@ -10,8 +10,10 @@ from run_stages.common_run_stage import CommonRunStage
 from utilities.image_processing_utilities import int_sq
 from utilities.common_utilities import load_csv
 
+
 def nan_helper(y):
 	return np.isnan(y), lambda z: z.nonzero()[0]
+
 
 class ResistiveMeshStage(CommonRunStage):
 	"""
@@ -153,7 +155,7 @@ class ResistiveMeshStage(CommonRunStage):
 		np.fill_diagonal(S, G.sum(axis=1))
 		r_dual = 1 / S
 
-		return [r_dual / Configuration().params["r_matrix_conductivity"] * 1E3]
+		return [r_dual * (1E3 / Configuration().params["r_matrix_conductivity"])]
 
 	# TODO: incorporate in plot results
 	@staticmethod

@@ -85,7 +85,8 @@ class PlotResultsStage(CommonRunStage):
 		if RunStages.post_process.name in self.outputs_container:
 			# extract one diode that should be on
 			time = self.post_process_results["on_diode_data"]["time_ms"]
-			on_diodes = list(self.post_process_results["on_diode_data"].keys()) # Todo automate in case less than five pixels are illuminated below the threshold!
+			diode_keys = [k for k in self.post_process_results["on_diode_data"].keys() if k != "time_ms"]
+			on_diodes = list(diode_keys) # Todo automate in case less than five pixels are illuminated below the threshold!
 			n_diodes_above_threshold = len(on_diodes)
 			if n_diodes_above_threshold > 0:
 				idx = int(np.random.uniform(0, n_diodes_above_threshold))
@@ -297,7 +298,11 @@ class PlotResultsStage(CommonRunStage):
 		nrows = int(np.ceil(n_times / ncols))
 
 		fig_all, axes_all = plt.subplots(nrows, ncols, figsize=(3 * ncols, 3 * nrows))
-		axes_all = axes_all.flatten()
+
+		if isinstance(axes_all, np.ndarray):
+			axes_all = axes_all.flatten()
+		else:
+			axes_all = np.array([axes_all])
 
 		for i in range(n_times):
 			im = axes_all[i].imshow(xy_t[:, :, i], cmap="inferno", extent=(min_x, max_x, min_y, max_y))
