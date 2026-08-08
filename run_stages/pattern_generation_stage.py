@@ -4,6 +4,7 @@ import pickle
 import warnings
 import numpy as np
 from copy import deepcopy
+from scipy import ndimage
 import matplotlib.pyplot as plt
 from PIL import Image, ImageDraw, ImageFont, ImageColor
 
@@ -49,18 +50,29 @@ class PatternGenerationStage(CommonRunStage):
         """
         if Configuration().params["generate_pattern"]:
 
-            ### Object based implementation
+            # Object based implementation
             projection_sequence = Configuration().params["projection_sequences"]
             drawing_board_background = Configuration().params["drawing_board_background"]
             self.script = projection_sequence.get_script()
 
-            # Iterate on the frames of the projection
+            # The diode-blackout post-processing (and the worst-case shift search) only makes
+            # sense for a bipolar PRIMA 100-lg implant.
+            want_diode_blackout = Configuration().params.get("blackout_partial_diode_hexagons", False)
+            want_worst_case_shift = Configuration().params.get("find_worst_case_diode_shift", False)
+            is_bipolar_prima100_lg = (Configuration().params.get("model") == "bipolar"
+                                       and Configuration().params.get("pixel_size") == 100
+                                       and Configuration().params.get("pixel_size_suffix") == "-lg")
+            apply_diode_blackout = want_diode_blackout and is_bipolar_prima100_lg
+            apply_worst_case_shift = want_worst_case_shift and is_bipolar_prima100_lg
+
+            # iterate on the frames of the projection
             for frame in projection_sequence:
-                # For temporary storing the outputs
+
+                # for temporarily storing the outputs
                 list_tmp_bmp = []
                 list_tmp_array = []
 
-                # Iterate on the subframes for the given frame
+                # iterate on the subframes for the given frame
                 for idx, subframe in enumerate(frame):
                     drawing_board = ImagePattern(pixel_size=Configuration().params["pixel_size"], drawing_board_background=drawing_board_background)
                     # Several patterns can be added to a drawing_board / subframe
@@ -68,21 +80,27 @@ class PatternGenerationStage(CommonRunStage):
                         # Draw the provided pattern
                         pattern.draw(drawing_board)
 
-                    # Save subframe
+                    # modify the drawing_board to find the worst-case shift or enforce full diode coverage
+                    if apply_worst_case_shift:
+                        drawing_board.find_worst_case_shift()
+                    if apply_diode_blackout:
+                        drawing_board.enforce_full_diode_coverage()
+
+                    # save subframe
                     list_tmp_bmp.append((f'Subframe{int(idx+1)}', drawing_board.save_as_PIL()))
                     list_tmp_array.append(drawing_board.save_as_array())
 
                     plt.rcParams['figure.facecolor'] = 'white'
                     drawing_board.show(frame.name, idx)
                 
-                # Save frame
+                # save frame
                 self.dict_PIL_images[frame.name] = list_tmp_bmp
                 self.list_subframes_as_ndarray.append(list_tmp_array)
             
-            # Current Sequence stage uses the ndarray frames and script, the PIL images are for the user only
+            # current Sequence stage uses the ndarray frames and script, the PIL images are for the user only
             return [self.list_subframes_as_ndarray, self.script, self.dict_PIL_images]                        
         else:
-            # If we load pre-existing patterns, we do not need to process anything
+            # if we load pre-existing patterns, we do not need to process anything
             return []  
 
 
@@ -124,11 +142,24 @@ class ImagePattern():
         self.center_x, self.center_y = self.find_center()
         self.width, self.height = self.implant_layout.size[0], self.implant_layout.size[1]
 
-        self.background_overlay = self.implant_layout.copy() 
+        self.background_overlay = self.implant_layout.copy()
         self.background_overlay.putalpha(255) # Remove transparency to fully opaque
         # self.projected = Image.new("RGB", self.background_overlay.size, "black")
         self.projected = Image.new("RGB", self.background_overlay.size, drawing_board_background)
+        self.background_color = np.array(
+            ImageColor.getrgb(drawing_board_background) if isinstance(drawing_board_background, str)
+            else drawing_board_background, dtype=np.uint8
+        )
 
+        self.diode_side = None          # lazy-loaded only if enforce_full_diode_coverage() is used
+        self.full_pixel_labels = None   # lazy-built only if enforce_full_diode_coverage() is used
+        self.diode_colored_layout = None  # lazy-built only if enforce_full_diode_coverage() is used
+        self._diode_sub_id = None       # lazy-built cache used by _diode_blackout_labels()
+        self._diode_total_count = None
+        self.modified_overlay = None    # populated by enforce_full_diode_coverage(), if it runs
+        self.worst_case_shift_x_px = None      # populated by find_worst_case_shift(), if it runs
+        self.worst_case_shift_y_px = None
+        self.worst_case_off_diode_count = None
 
         self.opacity = 180 # (0, 255) (transparent to opaque)
         self.image_pixel_scale = self.find_image_scale()
@@ -142,12 +173,19 @@ class ImagePattern():
     
     def show(self, frame_name, subframe_idx):
         """
-        Displays the overlay and projected image as a subplot.
+        Displays the overlay, the projected pattern, and -- when enforce_full_diode_coverage()
+        has run -- a third panel with the overlay using the diode-corrected projection.
         """
+        panels = [(self.background_overlay, "Pattern overlayed on implant"),
+                  (self.projected, "Projected pattern")]
+        if self.modified_overlay is not None:
+            panels.append((self.modified_overlay, "Modified pattern over diode layout"))
+
         # plt.clf()
-        fig, axes = plt.subplots(1,2, figsize=(12, 20))
-        axes[0].imshow(np.array(self.background_overlay))
-        axes[1].imshow(np.array(self.projected))
+        fig, axes = plt.subplots(1, len(panels), figsize=(6 * len(panels), 20))
+        for ax, (image, title) in zip(axes, panels):
+            ax.imshow(np.array(image))
+            ax.set_title(title)
         fig.suptitle(f"{frame_name} Subframe {subframe_idx + 1}", y=0.62)
         plt.show(block=False)
 
@@ -638,8 +676,153 @@ class ImagePattern():
         # plt.axis('off')
         # plt.show()
 
+    # Default fraction of a photodiode's own area that must be illuminated to count as "on";
+    # used unless the min_diode_illumination_fraction config parameter overrides it.
+    DEFAULT_MIN_DIODE_ILLUMINATION_FRACTION = 0.15
 
-########################### Classes for defining the patterns ###########################   
+    def _diode_blackout_labels(self, lit):
+        """
+        Given a boolean 'lit' mask (True where an image pixel differs from the background),
+        returns (blackout_labels, wrongly_off_labels): all hexagon labels that fail the
+        dual-diode illumination threshold, and the subset of those that were at least partly
+        illuminated (i.e. the pattern intended to light them, as opposed to hexagons the pattern
+        never touched at all).
+        """
+        if self._diode_sub_id is None:
+            # Unique id per photodiode half; 0 marks pixels that are not part of any diode. This
+            # and the per-half pixel counts don't depend on the pattern, so they're cached.
+            self._diode_sub_id = np.where(self.diode_side > 0, self.pixel_labels * 2 + self.diode_side - 1, 0)
+            self._diode_total_count = np.bincount(self._diode_sub_id.ravel())
+
+        n_sub = len(self._diode_total_count)
+        lit_count = np.bincount(self._diode_sub_id[lit], minlength=n_sub)
+        with np.errstate(invalid="ignore"):
+            frac_per_half = np.where(self._diode_total_count > 0, lit_count / self._diode_total_count, 0.0)
+
+        threshold = Configuration().params.get("min_diode_illumination_fraction",
+                                                self.DEFAULT_MIN_DIODE_ILLUMINATION_FRACTION)
+        side1_on = frac_per_half[0::2] >= threshold
+        side2_on = frac_per_half[1::2] >= threshold
+        not_both_on = ~(side1_on & side2_on)  # fails unless both diodes are meaningfully lit
+        any_lit = (lit_count[0::2] + lit_count[1::2]) > 0
+
+        blackout_labels = np.flatnonzero(not_both_on)
+        blackout_labels = blackout_labels[blackout_labels != 0]  # 0 = background/electrodes
+        wrongly_off_labels = np.flatnonzero(not_both_on & any_lit)
+        wrongly_off_labels = wrongly_off_labels[wrongly_off_labels != 0]
+        return blackout_labels, wrongly_off_labels
+
+    def find_worst_case_shift(self):
+        """
+        searches horizontal and vertical shifts of the projected pattern, finds the shift that maximizes the number
+        of hexagons that receive some illumination but fail the dual-diode threshold,
+        and applies that worst-case shift to self.projected in place. Combine with
+        blackout_partial_diode_hexagons to see the resulting effect rendered.
+
+        Searches +/- lateral_shift_search_range_px (config parameter, default half the pixel
+        pitch -- covering every distinct relative alignment, since the hex grid repeats every
+        pitch) horizontally, and +/- vertical_shift_search_range_um (config parameter, default
+        10um) vertically, around the pattern's current position.
+        """
+        if self.diode_side is None:
+            suffix = Configuration().params["pixel_size_suffix"]
+            self.diode_side = self.load_file(f"diode_side_PS{self.pixel_size}{suffix}.pkl")
+
+        x_range = Configuration().params.get("lateral_shift_search_range_px", self.scaled_pixel // 2)
+        y_range_um = Configuration().params.get("vertical_shift_search_range_um", 10)
+        y_range = round(y_range_um * self.image_pixel_scale)
+
+        projected_arr = np.array(self.projected)
+        # assemble_drawing() bakes the red frame into self.projected's pixels; strip it before
+        # rolling (it would otherwise smear into the interior) and redraw it fresh at the end.
+        border = np.zeros(projected_arr.shape[:2], dtype=bool)
+        border[:2, :] = border[-2:, :] = border[:, :2] = border[:, -2:] = True
+        projected_arr[border] = self.background_color
+        base_lit = np.any(projected_arr != self.background_color, axis=-1)
+
+        self.worst_case_shift_x_px, self.worst_case_shift_y_px, self.worst_case_off_diode_count = 0, 0, -1
+        for dy in range(-y_range, y_range + 1):
+            lit_y = np.roll(base_lit, dy, axis=0)
+            for dx in range(-x_range, x_range + 1):
+                _, wrongly_off_labels = self._diode_blackout_labels(np.roll(lit_y, dx, axis=1))
+                if len(wrongly_off_labels) > self.worst_case_off_diode_count:
+                    self.worst_case_shift_x_px, self.worst_case_shift_y_px = dx, dy
+                    self.worst_case_off_diode_count = len(wrongly_off_labels)
+
+        shifted = np.roll(projected_arr, self.worst_case_shift_y_px, axis=0)
+        shifted = np.roll(shifted, self.worst_case_shift_x_px, axis=1)
+        self.projected = Image.fromarray(shifted)
+        ImageDraw.Draw(self.projected).rectangle([0, 0, self.width - 1, self.height - 1], outline="red", width=2)
+
+    def enforce_full_diode_coverage(self):
+        """
+        Blacks out any hexagon unless BOTH of its two photodiodes are meaningfully illuminated
+        (each bipolar PRIMA 100-lg pixel is split into two photodiodes; a pattern edge that only
+        grazes one of them, or covers both too thinly, does not stimulate the pixel as intended).
+        "Meaningfully" means at least the min_diode_illumination_fraction config parameter (falls
+        back to DEFAULT_MIN_DIODE_ILLUMINATION_FRACTION) of that diode's own area.
+
+        "Illuminated" is defined relative to self.background_color rather than pure black, so this
+        also works correctly under a non-black drawing_board_background (e.g. black-on-white).
+
+        Turning a hexagon off blacks out the whole pixel, including its center electrode circle
+        (pixel_labels excludes that circle, so it's added back in via full_pixel_labels below).
+
+        Leaves self.background_overlay untouched (it keeps showing the pattern as originally drawn)
+        and builds self.modified_overlay, a copy with the same blackout applied, for comparison in
+        show(). self.projected is updated in place, since that is the array actually used downstream
+        for the simulation.
+        """
+        if self.diode_side is None:
+            suffix = Configuration().params["pixel_size_suffix"]
+            self.diode_side = self.load_file(f"diode_side_PS{self.pixel_size}{suffix}.pkl")
+
+        if self.full_pixel_labels is None:
+            hole = ndimage.binary_fill_holes(self.pixel_labels != 0) & (self.pixel_labels == 0)
+            _, nearest_idx = ndimage.distance_transform_edt(self.pixel_labels == 0, return_indices=True)
+            self.full_pixel_labels = np.where(hole, self.pixel_labels[tuple(nearest_idx)], self.pixel_labels)
+
+        projected_arr = np.array(self.projected)
+        lit = np.any(projected_arr != self.background_color, axis=-1)
+        blackout_labels, _ = self._diode_blackout_labels(lit)
+        blackout = np.isin(self.full_pixel_labels, blackout_labels)
+        if blackout.any():
+            projected_arr[blackout] = self.background_color
+            self.projected = Image.fromarray(projected_arr)
+
+        # Third panel: the corrected pattern over a layout that colors each hexagon's two
+        # photodiodes distinctly, rather than the plain schematic implant image, so it's obvious
+        # which diode(s) a still-lit hexagon is actually landing on.
+        if self.diode_colored_layout is None:
+            self.diode_colored_layout = self._build_diode_colored_layout()
+
+        diode_layout_arr = np.array(self.diode_colored_layout).astype(float)
+        corrected_lit = np.any(projected_arr != self.background_color, axis=-1)
+        blend = self.opacity / 255.0
+        modified_overlay_arr = diode_layout_arr.copy()
+        modified_overlay_arr[corrected_lit, :3] = (
+            projected_arr[corrected_lit].astype(float) * blend
+            + diode_layout_arr[corrected_lit, :3] * (1 - blend)
+        )
+        self.modified_overlay = Image.fromarray(modified_overlay_arr.astype(np.uint8), mode="RGBA")
+
+    def _build_diode_colored_layout(self):
+        """
+        RGBA image coloring each hexagon's two photodiodes distinctly (warm for side 1, cool for
+        side 2), with gaps and electrode centers left dark -- the backdrop for the third show()
+        panel, in place of the plain schematic implant photo.
+        """
+        arr = np.zeros((*self.pixel_labels.shape, 4), dtype=np.uint8)
+        arr[..., :3] = 30
+        arr[..., 3] = 255
+        side1 = (self.pixel_labels != 0) & (self.diode_side == 1)
+        side2 = (self.pixel_labels != 0) & (self.diode_side == 2)
+        arr[side1, :3] = (190, 70, 60)
+        arr[side2, :3] = (60, 110, 190)
+        return Image.fromarray(arr, mode="RGBA")
+
+
+########################### Classes for defining the patterns ###########################
 
 
 class Pattern():

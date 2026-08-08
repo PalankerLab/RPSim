@@ -199,8 +199,15 @@ def get_rpsim_config(duration, intensity, frequency, spot_size, frame_name, aver
                 {
                     "projection_sequences": list_projections,
                     "font_path": None,  # If set to None for, defaults to optometrist font Sloan.otf
-                    "projection_sequences_stored_config": None
+                    "projection_sequences_stored_config": None,
                     # Used for storing the config, but part of the skipped parameters
+                    "blackout_partial_diode_hexagons": False,
+                    # Only takes effect for bipolar PRIMA 100-lg implants; this PRIMA100 config
+                    # defaults to pixel_size_suffix="", so it's a no-op unless suffix is set to "-lg"
+                    "min_diode_illumination_fraction": 0.15,
+                    # min fraction of a diode's area that must be lit to count as "on"
+                    "find_worst_case_diode_shift": False
+                    # if True, shift the pattern laterally to the position that turns off the most diodes
                 }
             rpsim_config["pattern_generation"].update(tmp)
 
@@ -299,7 +306,10 @@ def get_rpsim_config(duration, intensity, frequency, spot_size, frame_name, aver
                 {
                     "projection_sequences": list_projections,
                     "font_path": None,
-                    "projection_sequences_stored_config": None
+                    "projection_sequences_stored_config": None,
+                    "blackout_partial_diode_hexagons": False,  # not applicable to monopolar implants
+                    "min_diode_illumination_fraction": 0.15,
+                    "find_worst_case_diode_shift": False  # not applicable to monopolar implants
                 }
             rpsim_config["pattern_generation"].update(tmp)
 

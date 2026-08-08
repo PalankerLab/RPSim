@@ -79,7 +79,10 @@ if add_projection_seq:
         {
         "projection_sequences"              : list_projections,
         "font_path"                         : None, # If set to None for, defaults to optometrist font Sloan.otf
-        "projection_sequences_stored_config" : None # Used for storing the config, but part of the skipped parameters
+        "projection_sequences_stored_config" : None, # Used for storing the config, but part of the skipped parameters
+        "blackout_partial_diode_hexagons"    : False, # Only takes effect for bipolar PRIMA 100-lg implants
+        "min_diode_illumination_fraction"    : 0.15,  # min fraction of a diode's area that must be lit to count as "on"
+        "find_worst_case_diode_shift"        : False  # if True, shift the pattern laterally to the position that turns off the most diodes
         }
     configuration["pattern_generation"].update(tmp)
 
@@ -119,7 +122,10 @@ if generate_pattern:
         {
         "projection_sequences"              : list_projections,
         "font_path"                         : None, # If set to None for, defaults to optometrist font Sloan.otf
-        "projection_sequences_stored_config" : None # Used for storing the config, but part of the skipped parameters
+        "projection_sequences_stored_config" : None, # Used for storing the config, but part of the skipped parameters
+        "blackout_partial_diode_hexagons"    : False, # Only takes effect for bipolar PRIMA 100-lg implants
+        "min_diode_illumination_fraction"    : 0.15,  # min fraction of a diode's area that must be lit to count as "on"
+        "find_worst_case_diode_shift"        : False  # if True, shift the pattern laterally to the position that turns off the most diodes
         }
     configuration["pattern_generation"].update(tmp)
 
