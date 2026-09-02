@@ -456,24 +456,34 @@ class ImagePattern():
 
         # Convert sizes to image based pixel
         letter_size = int(pattern.letter_size * (self.scaled_pixel if pattern.unit == "pixel" else self.image_pixel_scale))
+        letter_spacing = int(pattern.letter_spacing * (self.scaled_pixel if pattern.unit == "pixel" else self.image_pixel_scale))
         if letter_size <= self.scaled_pixel:
             warnings.warn("The letter size is equal or smaller to the pixel size and will not be resolved.")
-        
+
+        # Find the font size matching the letter size
+        font = self.determine_font_size(letter_size)
+
         # Determine image size
         lines = pattern.text.splitlines()
         n_lines = len(lines)
         max_len = len(max(lines, key=len))
-        image_size = (np.ceil(letter_size * max_len).astype(int), np.ceil(letter_size * n_lines).astype(int))
+        lines_widths = [[font.getlength(ch) for ch in line] for line in lines]
+        line_total_widths = [sum(widths) + letter_spacing * max(len(widths) - 1, 0) for widths in lines_widths]
+        image_size = (np.ceil(max(line_total_widths)).astype(int), np.ceil(letter_size * n_lines).astype(int))
         # Create a new image with a transparent background
         # text_image = Image.new('RGBA', image_size, (0, 0, 0, 0))
         text_image = Image.new('RGBA', image_size, (*pattern.background_color, pattern.background_opacity))
 
         # Convert to drawing, set the font, and write text
         text_drawing = ImageDraw.Draw(text_image)
-        # Find the font size matching the letter size
-        font = self.determine_font_size(letter_size)
-        text_drawing.text((0, 0), pattern.text, font=font, fill=pattern.fill_color, align='center', spacing=0) # TODO check for the desired vertical spacing, if non-zero, increase image_size height by spacing, eventually use ImageDraw.textbox()
-        
+        # Draw letter by letter, centered per line, to control letter_spacing
+        for line_idx, (line, widths, line_width) in enumerate(zip(lines, lines_widths, line_total_widths)):
+            x = (image_size[0] - line_width) / 2
+            y = line_idx * letter_size
+            for ch, w in zip(line, widths):
+                text_drawing.text((x, y), ch, font=font, fill=pattern.fill_color)
+                x += w + letter_spacing
+
         # Rotate with expansion of the image (i.e. no crop)
         text_image = text_image.rotate(pattern.rotation, expand=1)
 
@@ -862,6 +872,7 @@ class Text(Pattern):
         unit (float): Either 'pixel' or 'um'. Pixel for features which are multiple of the pixel size, or um for micrometers.      
         text (string): The text to be projected 
         letter_size (float): The letter's size as a multiple of the elec. pixel size
+        letter_spacing (float): The space between letters, in the same unit as letter_size
         gap_size (float): When using Landolt C, the gap opening as a multiple of the pixel size
 
         Note: if gap size is specified, it overwrites the provided letter size!
@@ -876,9 +887,10 @@ class Text(Pattern):
             -> the letter size should be 5 times the gap size
             -> the computation are done in image pixel through self.scaled_pixel or self.image_pixel_scale
     """    
-    def __init__(self, position=(0, 0), rotation=0, text="C", unit="pixel", letter_size=5, gap_size=None, fill_color=(255, 255, 255), background_color=(0, 0, 0)):
+    def __init__(self, position=(0, 0), rotation=0, text="C", unit="pixel", letter_size=5, letter_spacing=0, gap_size=None, fill_color=(255, 255, 255), background_color=(0, 0, 0)):
         super().__init__(position, rotation, unit, fill_color=fill_color, background_color=background_color)
         self.letter_size = letter_size
+        self.letter_spacing = letter_spacing
         self.text = text
         
         # Gap opening overwrites letter size
